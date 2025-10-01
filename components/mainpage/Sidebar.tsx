@@ -13,7 +13,6 @@ import {
   Sparkles, 
   ChevronRight,
   Crown,
-  ShoppingBag,
   Store
 } from 'lucide-react'
 
@@ -30,7 +29,7 @@ const navLinks: NavLink[] = [
   { name: 'Recycling Centers', path: '/recycling-centers', icon: <Recycle className="w-5 h-5" /> },
   { name: 'Waste Tracking', path: '/waste-tracking', icon: <MapPin className="w-5 h-5" /> },
   { name: 'Collection', path: '/delivery-collection', icon: <Truck className="w-5 h-5" /> },
-  { name: 'Subscription', path: '/subscription', icon: <Crown className="w-5 h-5" />, badge: 'Pro' },
+  { name: 'Subscription', path: '/subscription', icon: <Crown className="w-5 h-5" />, badge: 'Upgrade' },
   { name: 'Profile & Rewards', path: '/profile-reward', icon: <UserCircle2 className="w-5 h-5" /> },
   { name: 'About', path: '/about', icon: <Info className="w-5 h-5" /> },
 ]
@@ -44,7 +43,7 @@ export default function Sidebar() {
     router.push('/logout');
   }
   
-  // Animation variants with proper TypeScript typing
+  // Fixed animation variants with proper TypeScript typing
   const sidebarVariants = {
     hidden: { x: -100, opacity: 0 },
     visible: { 
@@ -73,7 +72,7 @@ export default function Sidebar() {
     }
   };
   
-  // Fixed logo variants with proper typing
+  // Fixed logo variants
   const logoVariants = {
     initial: { rotate: 0, scale: 1 },
     hover: { 
@@ -86,7 +85,7 @@ export default function Sidebar() {
     }
   };
 
-  // Fixed points variants with proper typing
+  // Fixed points variants
   const pointsVariants = {
     initial: { backgroundPosition: "0% 50%" },
     animate: { 
@@ -100,10 +99,35 @@ export default function Sidebar() {
     }
   };
 
-  // Points data - this would typically come from a global state or API
+  // Fixed card variants for stats
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+      opacity: 1, 
+      y: 0, 
+      transition: { 
+        duration: 0.5,
+        ease: "easeOut" as const
+      } 
+    }
+  };
+
+  // Fixed tab content variants
+  const tabContentVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1, 
+      transition: { 
+        duration: 0.3,
+        ease: "easeOut" as const
+      } 
+    }
+  };
+
+  // Points data
   const userPoints = 1250;
 
-  // Check if link is active (including subroutes)
+  // Check if link is active
   const isActiveLink = (linkPath: string) => {
     if (linkPath === '/dashboard') {
       return pathname === '/dashboard';
