@@ -2,19 +2,35 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Recycle, MapPin, Gauge, Truck, UserCircle2, Info, LogOut, Sparkles, ChevronRight } from 'lucide-react'
+import { 
+  Recycle, 
+  MapPin, 
+  Gauge, 
+  Truck, 
+  UserCircle2, 
+  Info, 
+  LogOut, 
+  Sparkles, 
+  ChevronRight,
+  Crown,
+  ShoppingBag,
+  Store
+} from 'lucide-react'
 
 interface NavLink {
   name: string;
   path: string;
   icon: React.ReactNode;
+  badge?: string;
 }
 
 const navLinks: NavLink[] = [
   { name: 'Dashboard', path: '/dashboard', icon: <Gauge className="w-5 h-5" /> },
+  { name: 'Marketplace', path: '/marketplace', icon: <Store className="w-5 h-5" />, badge: 'New' },
   { name: 'Recycling Centers', path: '/recycling-centers', icon: <Recycle className="w-5 h-5" /> },
   { name: 'Waste Tracking', path: '/waste-tracking', icon: <MapPin className="w-5 h-5" /> },
   { name: 'Collection', path: '/delivery-collection', icon: <Truck className="w-5 h-5" /> },
+  { name: 'Subscription', path: '/subscription', icon: <Crown className="w-5 h-5" />, badge: 'Pro' },
   { name: 'Profile & Rewards', path: '/profile-reward', icon: <UserCircle2 className="w-5 h-5" /> },
   { name: 'About', path: '/about', icon: <Info className="w-5 h-5" /> },
 ]
@@ -265,11 +281,30 @@ export default function Sidebar() {
                   >
                     {link.icon}
                   </motion.span>
-                  <span className="text-sm relative z-10 font-medium">{link.name}</span>
+                  <span className="text-sm relative z-10 font-medium flex-1">{link.name}</span>
+                  
+                  {/* Badge for special items */}
+                  {link.badge && (
+                    <motion.span
+                      className={`px-2 py-1 rounded-full text-xs font-bold relative z-10 ${
+                        link.path === '/subscription'
+                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
+                          : link.path === '/marketplace'
+                          ? 'bg-gradient-to-r from-purple-400 to-pink-500 text-white'
+                          : 'bg-emerald-500 text-white'
+                      }`}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.5 + i * 0.1, type: "spring" as const }}
+                      whileHover={{ scale: 1.1 }}
+                    >
+                      {link.badge}
+                    </motion.span>
+                  )}
                   
                   {isActive && (
                     <motion.div 
-                      className="ml-auto w-2 h-8 bg-gradient-to-b from-emerald-400 to-green-600 rounded-full relative z-10"
+                      className="ml-2 w-2 h-8 bg-gradient-to-b from-emerald-400 to-green-600 rounded-full relative z-10"
                       layoutId="activeIndicator"
                       transition={{ type: "spring", stiffness: 400, damping: 30 }}
                     />
