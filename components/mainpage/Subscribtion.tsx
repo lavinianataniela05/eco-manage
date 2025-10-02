@@ -17,7 +17,10 @@ import {
   Calendar,
   Check,
   Award,
-  TrendingDown
+  TrendingDown,
+  CreditCard,
+  Lock,
+  BadgeCheck
 } from 'lucide-react';
 import {
   collection,
@@ -62,7 +65,10 @@ type SubscriptionPlan = {
   billingOptions: BillingOption[];
 };
 
-// Subscription Plans Data dengan berbagai durasi
+// Payment types
+type PaymentMethod = 'credit_card' | 'bank_transfer' | 'gopay' | 'ovo' | 'shopeepay' | 'qris';
+
+// Subscription Plans Data
 const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'basic',
@@ -90,7 +96,7 @@ const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 49000, // Harga bulanan
+    price: 49000,
     originalPrice: 49000,
     description: 'Best for eco-conscious individuals',
     icon: <Zap className="w-6 h-6" />,
@@ -121,18 +127,18 @@ const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
       { 
         duration: 6, 
         label: '6 Months', 
-        price: 249000, // Rp 41.500/bulan
-        originalPrice: 294000, // 49.000 x 6
-        discount: 15, // 15% discount
+        price: 249000,
+        originalPrice: 294000,
+        discount: 15,
         monthlyEquivalent: 41500,
         bestDeal: false
       },
       { 
         duration: 12, 
         label: '12 Months', 
-        price: 470400, // Rp 39.200/bulan
-        originalPrice: 588000, // 49.000 x 12
-        discount: 20, // 20% discount
+        price: 470400,
+        originalPrice: 588000,
+        discount: 20,
         monthlyEquivalent: 39200,
         bestDeal: true
       }
@@ -163,6 +169,44 @@ const BENEFITS = [
   }
 ];
 
+const PAYMENT_METHODS = [
+  {
+    id: 'credit_card',
+    name: 'Credit Card',
+    icon: <CreditCard className="w-6 h-6" />,
+    description: 'Visa, MasterCard, JCB',
+    fees: 0
+  },
+  {
+    id: 'bank_transfer',
+    name: 'Bank Transfer',
+    icon: <BadgeCheck className="w-6 h-6" />,
+    description: 'BCA, Mandiri, BNI, BRI',
+    fees: 0
+  },
+  {
+    id: 'gopay',
+    name: 'GoPay',
+    icon: <Zap className="w-6 h-6" />,
+    description: 'GoPay Wallet',
+    fees: 0
+  },
+  {
+    id: 'ovo',
+    name: 'OVO',
+    icon: <Sparkles className="w-6 h-6" />,
+    description: 'OVO Wallet',
+    fees: 0
+  },
+  {
+    id: 'qris',
+    name: 'QRIS',
+    icon: <CreditCard className="w-6 h-6" />,
+    description: 'Any QRIS-enabled app',
+    fees: 0
+  }
+];
+
 // Utility functions
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('id-ID', {
@@ -183,16 +227,12 @@ export default function Subscription() {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
+  
   const [selectedBilling, setSelectedBilling] = useState<{[key: string]: BillingOption}>({
-    pro: { 
-      duration: 12, 
-      label: '12 Months', 
-      price: 470400, 
-      originalPrice: 588000,
-      discount: 20,
-      monthlyEquivalent: 39200,
-      bestDeal: true
-    } // Default pilih 12 bulan
+    pro: SUBSCRIPTION_PLANS[1].billingOptions[2] // Default 12 bulan
   });
 
   // Check auth state and load user data
@@ -240,71 +280,132 @@ export default function Subscription() {
       return;
     }
 
+    const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
+    if (!plan) return;
+
+    if (planId === 'basic') {
+      // Handle free basic plan
+      setSelectedPlan(planId);
+      setIsProcessing(true);
+      await activateBasicPlan(currentUser.uid);
+      return;
+    }
+
+    // For Pro plan - show payment modal
     setSelectedPlan(planId);
-    setIsProcessing(true);
+    setShowPaymentModal(true);
+  };
+
+  // Simulate payment processing dengan berbagai metode
+  const processPayment = async (): Promise<{success: boolean; transactionId?: string}> => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // Simulasi: 90% success rate untuk demo
+        const success = Math.random() > 0.1;
+        if (success) {
+          resolve({
+            success: true,
+            transactionId: `TRX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          });
+        } else {
+          resolve({
+            success: false
+          });
+        }
+      }, 3000);
+    });
+  };
+
+  const handlePayment = async () => {
+    if (!selectedPaymentMethod || !selectedPlan || !currentUser) {
+      alert('Please select a payment method');
+      return;
+    }
+
+    setPaymentStatus('processing');
 
     try {
-      const plan = SUBSCRIPTION_PLANS.find(p => p.id === planId);
-      if (!plan) return;
-
-      if (planId === 'basic') {
-        // Handle free basic plan
-        await activateBasicPlan(currentUser.uid);
-        alert('Basic plan activated successfully!');
-        router.push('/marketplace');
-        return;
-      }
-
-      // For Pro plan - process payment dengan durasi yang dipilih
-      const selectedBillingOption = selectedBilling[planId];
-      await processSubscriptionPayment(currentUser.uid, plan, selectedBillingOption);
+      const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
+      const billingOption = selectedBilling[selectedPlan];
       
+      if (!plan || !billingOption) return;
+
+      // Process payment
+      const paymentResult = await processPayment();
+
+      if (paymentResult.success) {
+        setPaymentStatus('success');
+        
+        // Aktifkan subscription setelah pembayaran berhasil
+        await activateProSubscription(
+          currentUser.uid, 
+          plan, 
+          billingOption, 
+          selectedPaymentMethod,
+          paymentResult.transactionId
+        );
+        
+        // Redirect setelah delay
+        setTimeout(() => {
+          setShowPaymentModal(false);
+          router.push('/marketplace');
+        }, 2000);
+      } else {
+        setPaymentStatus('failed');
+      }
     } catch (error) {
-      console.error('Subscription error:', error);
-      alert('Subscription failed. Please try again.');
+      console.error('Payment error:', error);
+      setPaymentStatus('failed');
+    }
+  };
+
+  const activateBasicPlan = async (userId: string) => {
+    try {
+      const subscriptionData = {
+        tier: 'basic',
+        status: 'active',
+        isActive: true,
+        startDate: new Date().toISOString(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        activatedAt: serverTimestamp()
+      };
+
+      await updateDoc(doc(db, 'users', userId), {
+        subscription: subscriptionData
+      });
+
+      // Add activity
+      const activityId = `activity_${Date.now()}`;
+      await setDoc(doc(db, 'activities', activityId), {
+        id: activityId,
+        userId: userId,
+        type: 'subscription',
+        title: "Basic Plan Activated",
+        description: "You've activated the Basic subscription plan",
+        date: new Date().toISOString().split('T')[0],
+        points: 0,
+        createdAt: new Date()
+      });
+
+      setUserSubscription(subscriptionData);
+      alert('Basic plan activated successfully!');
+      router.push('/marketplace');
+    } catch (error) {
+      console.error('Error activating basic plan:', error);
+      alert('Failed to activate basic plan');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const activateBasicPlan = async (userId: string) => {
-    const subscriptionData = {
-      tier: 'basic',
-      status: 'active',
-      isActive: true,
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-      activatedAt: serverTimestamp()
-    };
-
-    await updateDoc(doc(db, 'users', userId), {
-      subscription: subscriptionData
-    });
-
-    // Add activity - compatible dengan rules
-    const activityId = `activity_${Date.now()}`;
-    await setDoc(doc(db, 'activities', activityId), {
-      id: activityId,
-      userId: userId,
-      type: 'subscription',
-      title: "Basic Plan Activated",
-      description: "You've activated the Basic subscription plan",
-      date: new Date().toISOString().split('T')[0],
-      points: 0,
-      createdAt: new Date()
-    });
-
-    setUserSubscription(subscriptionData);
-  };
-
-  const processSubscriptionPayment = async (userId: string, plan: SubscriptionPlan, billingOption: BillingOption) => {
+  const activateProSubscription = async (
+    userId: string, 
+    plan: SubscriptionPlan, 
+    billingOption: BillingOption,
+    paymentMethod: PaymentMethod,
+    transactionId?: string
+  ) => {
     try {
-      // Simulate payment processing
-      console.log('Processing payment for:', plan.name, 'Duration:', billingOption.duration, 'months');
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
       const endDate = new Date();
       endDate.setMonth(endDate.getMonth() + billingOption.duration);
 
@@ -316,6 +417,7 @@ export default function Subscription() {
         endDate: endDate.toISOString(),
         duration: billingOption.duration,
         billingCycle: billingOption.label,
+        paymentMethod: paymentMethod,
         activatedAt: serverTimestamp()
       };
 
@@ -324,7 +426,7 @@ export default function Subscription() {
         subscription: subscriptionData
       });
 
-      // Create subscription record - compatible dengan rules
+      // Create subscription record
       const subscriptionId = `sub_${Date.now()}`;
       await setDoc(doc(db, 'subscriptions', subscriptionId), {
         id: subscriptionId,
@@ -337,18 +439,33 @@ export default function Subscription() {
         duration: billingOption.duration,
         billingCycle: billingOption.label,
         isActive: true,
-        paymentMethod: 'credit_card',
+        paymentMethod: paymentMethod,
         amount: billingOption.price,
         originalAmount: billingOption.originalPrice,
         discount: billingOption.discount,
         monthlyEquivalent: billingOption.monthlyEquivalent,
+        transactionId: transactionId,
+        createdAt: new Date()
+      });
+
+      // Create payment record
+      const paymentId = `pay_${Date.now()}`;
+      await setDoc(doc(db, 'payments', paymentId), {
+        id: paymentId,
+        userId: userId,
+        subscriptionId: subscriptionId,
+        amount: billingOption.price,
+        paymentMethod: paymentMethod,
+        status: 'completed',
+        transactionId: transactionId,
+        orderId: subscriptionId,
         createdAt: new Date()
       });
 
       // Calculate bonus points based on duration
-      const bonusPoints = billingOption.duration * 100; // 100 points per month
+      const bonusPoints = billingOption.duration * 100;
 
-      // Add activity - compatible dengan rules
+      // Add activity
       const activityId = `activity_${Date.now()}_sub`;
       await setDoc(doc(db, 'activities', activityId), {
         id: activityId,
@@ -368,12 +485,8 @@ export default function Subscription() {
 
       setUserSubscription(subscriptionData);
       
-      // Show success and redirect
-      alert(`Subscription successful! Enjoy your Pro benefits for ${billingOption.duration} months!`);
-      router.push('/marketplace');
-      
     } catch (error) {
-      console.error('Payment processing error:', error);
+      console.error('Error activating subscription:', error);
       throw error;
     }
   };
@@ -416,7 +529,7 @@ export default function Subscription() {
       
       await Promise.all(updatePromises);
 
-      // Add activity - compatible dengan rules
+      // Add activity
       const activityId = `activity_${Date.now()}_cancel`;
       await setDoc(doc(db, 'activities', activityId), {
         id: activityId,
@@ -436,6 +549,14 @@ export default function Subscription() {
       console.error('Error canceling subscription:', error);
       alert('Failed to cancel subscription. Please try again.');
     }
+  };
+
+  // Reset payment modal
+  const resetPaymentModal = () => {
+    setShowPaymentModal(false);
+    setSelectedPaymentMethod(null);
+    setPaymentStatus('idle');
+    setIsProcessing(false);
   };
 
   const handleLearnMore = () => {
@@ -509,6 +630,182 @@ export default function Subscription() {
               <span>/month</span>
             </div>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  // Payment Modal Component
+  const PaymentModal = () => {
+    if (!showPaymentModal || !selectedPlan) return null;
+
+    const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
+    const billingOption = selectedBilling[selectedPlan];
+    
+    if (!plan || !billingOption) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800">Complete Payment</h3>
+              <button
+                onClick={resetPaymentModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={paymentStatus === 'processing'}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-gray-600 mt-2">Subscribe to {plan.name} Plan</p>
+          </div>
+
+          {/* Order Summary */}
+          <div className="p-6 border-b border-gray-200">
+            <h4 className="font-semibold text-gray-800 mb-3">Order Summary</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">{plan.name} Plan</span>
+                <span className="text-gray-800">{billingOption.label}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount</span>
+                <span className="text-gray-800 font-semibold">
+                  {formatCurrency(billingOption.price)}
+                </span>
+              </div>
+              {billingOption.discount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Discount</span>
+                  <span>{billingOption.discount}%</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Payment Methods */}
+          {paymentStatus === 'idle' && (
+            <div className="p-6 border-b border-gray-200">
+              <h4 className="font-semibold text-gray-800 mb-4">Payment Method</h4>
+              <div className="space-y-3">
+                {PAYMENT_METHODS.map((method) => (
+                  <div
+                    key={method.id}
+                    onClick={() => setSelectedPaymentMethod(method.id as PaymentMethod)}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ${
+                      selectedPaymentMethod === method.id
+                        ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-500/20'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-gray-100 rounded-lg">
+                        {method.icon}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-800">{method.name}</div>
+                        <div className="text-sm text-gray-600">{method.description}</div>
+                      </div>
+                      {selectedPaymentMethod === method.id && (
+                        <CheckCircle className="w-5 h-5 text-teal-500" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Payment Processing */}
+          {paymentStatus === 'processing' && (
+            <div className="p-6 border-b border-gray-200">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+                <h4 className="font-semibold text-gray-800 mb-2">Processing Payment</h4>
+                <p className="text-gray-600">Please wait while we process your payment...</p>
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-yellow-800 text-sm">
+                    <strong>Demo:</strong> This is a simulation. Payment will "succeed" in 3 seconds.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Payment Success */}
+          {paymentStatus === 'success' && (
+            <div className="p-6 border-b border-gray-200">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-8 h-8 text-green-600" />
+                </div>
+                <h4 className="font-semibold text-gray-800 mb-2">Payment Successful!</h4>
+                <p className="text-gray-600 mb-4">
+                  Your {plan.name} subscription is now active. Redirecting...
+                </p>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-green-800 text-sm">
+                    You've earned {billingOption.duration * 100} bonus points!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Payment Failed */}
+          {paymentStatus === 'failed' && (
+            <div className="p-6 border-b border-gray-200">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="text-red-600 text-2xl">!</div>
+                </div>
+                <h4 className="font-semibold text-gray-800 mb-2">Payment Failed</h4>
+                <p className="text-gray-600 mb-4">
+                  Sorry, we couldn't process your payment. Please try again.
+                </p>
+                <button
+                  onClick={() => setPaymentStatus('idle')}
+                  className="bg-red-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-600 transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="p-6">
+            {paymentStatus === 'idle' && (
+              <div className="space-y-3">
+                <button
+                  onClick={handlePayment}
+                  disabled={!selectedPaymentMethod}
+                  className={`w-full py-3 px-6 rounded-xl font-semibold transition-all duration-300 ${
+                    selectedPaymentMethod
+                      ? 'bg-teal-500 text-white hover:bg-teal-600 shadow-lg hover:shadow-xl'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Pay {formatCurrency(billingOption.price)}
+                </button>
+                <button
+                  onClick={resetPaymentModal}
+                  className="w-full py-3 px-6 rounded-xl font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            
+            {paymentStatus === 'idle' && (
+              <div className="mt-4 flex items-center justify-center space-x-2 text-gray-500">
+                <Lock className="w-4 h-4" />
+                <span className="text-sm">Payments are secure and encrypted</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -673,6 +970,9 @@ export default function Subscription() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50 overflow-hidden">
+      {/* Payment Modal */}
+      <PaymentModal />
+
       {/* Hero Section */}
       <section className="relative py-20 flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 opacity-20">
