@@ -200,7 +200,7 @@ export default function Sidebar() {
         </div>
       </motion.div>
       
-      {/* Enhanced Points Display */}
+      {/* Enhanced Points Display - FIXED VERSION */}
       <Link href="/profile-reward" className="block mb-6">
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.9 }}
@@ -252,16 +252,17 @@ export default function Sidebar() {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-1">
-                <p className="text-sm text-emerald-700 font-semibold">Eco Points</p>
+                <span className="text-sm text-emerald-700 font-semibold">Eco Points</span>
                 <Sparkles className="w-3 h-3 text-emerald-500" />
               </div>
-              <p className="text-2xl font-bold text-emerald-800">
+              {/* FIX: Menggunakan div bukan p untuk menghindari nesting issues */}
+              <div className="text-2xl font-bold text-emerald-800 min-h-[32px] flex items-center">
                 {loading ? (
                   <div className="h-6 bg-emerald-200 rounded animate-pulse w-16"></div>
                 ) : (
                   userPoints.toLocaleString()
                 )}
-              </p>
+              </div>
             </div>
             <ChevronRight className="w-5 h-5 text-emerald-600 group-hover:translate-x-1 transition-transform duration-200" />
           </div>
@@ -276,7 +277,6 @@ export default function Sidebar() {
         </motion.div>
       </Link>
       
-      {/* Rest of the sidebar code remains the same */}
       {/* Elegant divider */}
       <div className="relative mb-6">
         <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
