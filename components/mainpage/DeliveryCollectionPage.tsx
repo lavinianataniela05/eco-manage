@@ -1,8 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '@/firebase/config'
+import { useAuthState } from 'react-firebase-hooks/auth';
 
 const EcoCollectScheduler = () => {
+  const [user] = useAuthState(auth);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState("09:00 AM");
   const [address, setAddress] = useState("");
@@ -16,6 +20,16 @@ const EcoCollectScheduler = () => {
   const [formComplete, setFormComplete] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // State baru untuk pembayaran dan jarak
+  const [distance, setDistance] = useState<number | null>(null);
+  const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("credit_card");
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [cvv, setCvv] = useState("");
+  const [cardholderName, setCardholderName] = useState("");
 
   const timeSlots = [
     "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
@@ -25,12 +39,12 @@ const EcoCollectScheduler = () => {
   ];
 
   const recyclingTypes = [
-    { id: "mixed", label: "Mixed Recycling", icon: "🔄", color: "bg-emerald-100" },
-    { id: "paper", label: "Paper/Cardboard", icon: "📄", color: "bg-blue-100" },
-    { id: "plastic", label: "Plastics", icon: "🥤", color: "bg-yellow-100" },
-    { id: "glass", label: "Glass", icon: "🔍", color: "bg-green-100" },
-    { id: "metal", label: "Metal", icon: "🥫", color: "bg-gray-100" },
-    { id: "ewaste", label: "E-Waste", icon: "💻", color: "bg-purple-100" }
+    { id: "mixed", label: "Mixed Recycling", icon: "🔄", color: "bg-emerald-100", basePrice: 5000 },
+    { id: "paper", label: "Paper/Cardboard", icon: "📄", color: "bg-blue-100", basePrice: 3000 },
+    { id: "plastic", label: "Plastics", icon: "🥤", color: "bg-yellow-100", basePrice: 4000 },
+    { id: "glass", label: "Glass", icon: "🔍", color: "bg-green-100", basePrice: 4500 },
+    { id: "metal", label: "Metal", icon: "🥫", color: "bg-gray-100", basePrice: 6000 },
+    { id: "ewaste", label: "E-Waste", icon: "💻", color: "bg-purple-100", basePrice: 8000 }
   ];
 
   const months = [
@@ -40,16 +54,100 @@ const EcoCollectScheduler = () => {
 
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+  const paymentMethods = [
+    { id: "credit_card", label: "Credit Card", icon: "💳" },
+    { id: "debit_card", label: "Debit Card", icon: "💳" },
+    { id: "ewallet", label: "E-Wallet", icon: "📱" },
+    { id: "bank_transfer", label: "Bank Transfer", icon: "🏦" }
+  ];
+
+  // Tarif per km
+  const distanceRate = 2000; // Rp 2.000 per km
+
   useEffect(() => {
     const checkFormCompletion = () => {
       if (currentStep === 1) return !!selectedDate && !!selectedTime;
       if (currentStep === 2) return recyclingType !== "" && bagsCount > 0;
       if (currentStep === 3) return address !== "" && email !== "" && phone !== "";
-      if (currentStep === 4) return true;
+      if (currentStep === 4) return distance !== null;
+      if (currentStep === 5) {
+        if (paymentMethod === "credit_card" || paymentMethod === "debit_card") {
+          return cardNumber !== "" && expiryDate !== "" && cvv !== "" && cardholderName !== "";
+        }
+        return true;
+      }
       return false;
     };
     setFormComplete(checkFormCompletion());
-  }, [currentStep, selectedDate, selectedTime, recyclingType, bagsCount, address, email, phone]);
+  }, [currentStep, selectedDate, selectedTime, recyclingType, bagsCount, address, email, phone, distance, paymentMethod, cardNumber, expiryDate, cvv, cardholderName]);
+
+  // Fungsi untuk menghitung jarak (simulasi)
+  const calculateDistance = async () => {
+    if (!address) return;
+    
+    setIsCalculatingDistance(true);
+    
+    // Simulasi API call untuk menghitung jarak
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Generate random distance antara 2-20 km (simulasi)
+    const randomDistance = Math.floor(Math.random() * 19) + 2;
+    setDistance(randomDistance);
+    
+    setIsCalculatingDistance(false);
+  };
+
+  // Fungsi untuk menghitung total biaya
+  const calculateTotalCost = () => {
+    if (!distance) return 0;
+    
+    const selectedType = recyclingTypes.find(type => type.id === recyclingType);
+    if (!selectedType) return 0;
+    
+    const baseCost = selectedType.basePrice * bagsCount;
+    const distanceCost = distance * distanceRate;
+    const totalCost = baseCost + distanceCost;
+    
+    return totalCost;
+  };
+
+  // Fungsi untuk menyimpan data ke Firebase
+  const saveToFirebase = async () => {
+    if (!user || !selectedDate) return null;
+
+    const collectionData = {
+      userId: user.uid,
+      userEmail: user.email,
+      pickupDate: selectedDate,
+      pickupTime: selectedTime,
+      address: address,
+      email: email,
+      phone: phone,
+      pickupNotes: pickupNotes,
+      recyclingType: recyclingType,
+      recyclingTypeLabel: recyclingTypes.find(t => t.id === recyclingType)?.label,
+      bagsCount: bagsCount,
+      weight: bagsCount, // Assuming 1 bag = 1 kg
+      distance: distance,
+      totalCost: calculateTotalCost(),
+      paymentMethod: paymentMethod,
+      status: 'scheduled', // scheduled, in_progress, completed, cancelled
+      statusLabel: 'Scheduled',
+      collector: null,
+      collectorPhone: null,
+      notes: '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    try {
+      const docRef = await addDoc(collection(db, 'collections'), collectionData);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error saving to Firebase:', error);
+      return null;
+    }
+  };
 
   const getDaysInMonth = (month: number, year: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -149,22 +247,31 @@ const EcoCollectScheduler = () => {
     return days;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentStep < 4) {
+    
+    if (currentStep < 5) {
       setCurrentStep(currentStep + 1);
     } else {
-      console.log("Submitting pickup request:", {
-        selectedDate: selectedDate?.toISOString(),
-        selectedTime,
-        address,
-        email,
-        phone,
-        pickupNotes,
-        recyclingType,
-        bagsCount,
-      });
-      setIsSubmitted(true);
+      setIsSubmitting(true);
+      
+      try {
+        // Save to Firebase
+        const docId = await saveToFirebase();
+        
+        if (docId) {
+          console.log("Pickup scheduled successfully with ID:", docId);
+          setIsSubmitted(true);
+        } else {
+          console.error("Failed to save to Firebase");
+          // Handle error - show error message to user
+        }
+      } catch (error) {
+        console.error("Error submitting form:", error);
+        // Handle error - show error message to user
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -185,10 +292,26 @@ const EcoCollectScheduler = () => {
     setPickupNotes("");
     setRecyclingType("mixed");
     setBagsCount(1);
+    setDistance(null);
+    setPaymentMethod("credit_card");
+    setCardNumber("");
+    setExpiryDate("");
+    setCvv("");
+    setCardholderName("");
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(amount);
   };
 
   const formattedDate = formatDate(selectedDate);
   const selectedRecyclingLabel = recyclingTypes.find(t => t.id === recyclingType)?.label;
+  const selectedRecyclingBasePrice = recyclingTypes.find(t => t.id === recyclingType)?.basePrice || 0;
+  const totalCost = calculateTotalCost();
 
   const renderReviewSummary = () => (
     <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border-2 border-emerald-100 shadow-lg max-w-xl mx-auto">
@@ -213,6 +336,32 @@ const EcoCollectScheduler = () => {
             {bagsCount} {bagsCount === 1 ? "kg" : "kgs"}
           </span>
         </div>
+        <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
+          <span className="text-emerald-600 font-medium">Distance:</span>
+          <span className="font-bold text-emerald-800">
+            {distance} km
+          </span>
+        </div>
+        <div className="border-b border-emerald-100 pb-3">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-emerald-600">Base Cost:</span>
+            <span className="font-bold text-emerald-800">
+              {formatCurrency(selectedRecyclingBasePrice * bagsCount)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-emerald-600">Distance Cost ({distance} km × {formatCurrency(distanceRate)}):</span>
+            <span className="font-bold text-emerald-800">
+              {formatCurrency(distance ? distance * distanceRate : 0)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
+            <span className="text-emerald-700 font-bold">Total Cost:</span>
+            <span className="font-bold text-lg text-emerald-800">
+              {formatCurrency(totalCost)}
+            </span>
+          </div>
+        </div>
         <div className="border-b border-emerald-100 pb-3">
           <span className="block text-emerald-600 font-medium mb-1">Pickup Address:</span>
           <span className="font-bold text-emerald-800 block text-right">{address || "Not provided"}</span>
@@ -228,6 +377,108 @@ const EcoCollectScheduler = () => {
         <div>
           <span className="block text-emerald-600 font-medium mb-1">Pickup Notes:</span>
           <p className="text-emerald-800 text-sm italic break-words">{pickupNotes || "No special notes."}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPaymentForm = () => (
+    <div className="max-w-2xl mx-auto">
+      <div className="bg-gradient-to-br from-emerald-50 to-white p-8 rounded-2xl border-2 border-emerald-100 shadow-lg">
+        <h3 className="text-xl font-bold text-emerald-800 mb-6">Payment Information</h3>
+        
+        <div className="space-y-6">
+          <div>
+            <label className="block text-emerald-700 font-medium mb-3">Payment Method</label>
+            <div className="grid grid-cols-2 gap-3">
+              {paymentMethods.map((method) => (
+                <button
+                  key={method.id}
+                  type="button"
+                  className={`p-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${
+                    paymentMethod === method.id
+                      ? "border-emerald-500 bg-emerald-50 transform scale-105 shadow-lg"
+                      : "border-emerald-100 bg-white hover:bg-emerald-50 hover:scale-102"
+                  }`}
+                  onClick={() => setPaymentMethod(method.id)}
+                >
+                  <span className="text-xl">{method.icon}</span>
+                  <span className="text-sm font-medium text-emerald-800">{method.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(paymentMethod === "credit_card" || paymentMethod === "debit_card") && (
+            <div className="space-y-4 bg-white p-6 rounded-xl border border-emerald-100">
+              <div>
+                <label htmlFor="cardholderName" className="block text-emerald-700 font-medium mb-2">Cardholder Name</label>
+                <input
+                  type="text"
+                  id="cardholderName"
+                  value={cardholderName}
+                  onChange={(e) => setCardholderName(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
+                  placeholder="John Doe"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="cardNumber" className="block text-emerald-700 font-medium mb-2">Card Number</label>
+                <input
+                  type="text"
+                  id="cardNumber"
+                  value={cardNumber}
+                  onChange={(e) => setCardNumber(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
+                  placeholder="1234 5678 9012 3456"
+                  maxLength={19}
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="expiryDate" className="block text-emerald-700 font-medium mb-2">Expiry Date</label>
+                  <input
+                    type="text"
+                    id="expiryDate"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
+                    placeholder="MM/YY"
+                    maxLength={5}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="cvv" className="block text-emerald-700 font-medium mb-2">CVV</label>
+                  <input
+                    type="text"
+                    id="cvv"
+                    value={cvv}
+                    onChange={(e) => setCvv(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
+                    placeholder="123"
+                    maxLength={3}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-medium">Total Amount:</span>
+              <span className="text-2xl font-bold">{formatCurrency(totalCost)}</span>
+            </div>
+            <p className="text-emerald-100 text-sm">
+              Includes base recycling cost and distance-based delivery fee
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -271,7 +522,7 @@ const EcoCollectScheduler = () => {
         {!isSubmitted && (
           <div className="max-w-4xl mx-auto mb-8">
             <div className="flex items-center justify-center space-x-4">
-              {[1, 2, 3, 4].map((step, index) => (
+              {[1, 2, 3, 4, 5].map((step, index) => (
                 <React.Fragment key={step}>
                   <button
                     type="button"
@@ -287,7 +538,7 @@ const EcoCollectScheduler = () => {
                   >
                     {currentStep > step ? "✓" : step}
                   </button>
-                  {index < 3 && (
+                  {index < 4 && (
                     <div className={`h-1 w-16 rounded-full transition-all duration-500 ${
                       currentStep > step + 1 
                         ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
@@ -343,6 +594,18 @@ const EcoCollectScheduler = () => {
                         <span className="text-emerald-600 font-medium">Quantity:</span>
                         <span className="font-bold text-emerald-800">
                           {bagsCount} {bagsCount === 1 ? "kg" : "kgs"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
+                        <span className="text-emerald-600 font-medium">Distance:</span>
+                        <span className="font-bold text-emerald-800">
+                          {distance} km
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
+                        <span className="text-emerald-600 font-medium">Total Cost:</span>
+                        <span className="font-bold text-emerald-800">
+                          {formatCurrency(totalCost)}
                         </span>
                       </div>
                       {pickupNotes && (
@@ -526,6 +789,9 @@ const EcoCollectScheduler = () => {
                               <p className="text-emerald-600">
                                 {bagsCount} {bagsCount === 1 ? "kg" : "kgs"}
                               </p>
+                              <p className="text-sm text-emerald-500 mt-1">
+                                Base price: {formatCurrency(selectedRecyclingBasePrice)}/kg
+                              </p>
                             </div>
                           </div>
                           
@@ -549,16 +815,34 @@ const EcoCollectScheduler = () => {
                         <div className="space-y-6">
                           <div>
                             <label htmlFor="address" className="block text-emerald-700 font-medium mb-2">Full Address</label>
-                            <input
-                              type="text"
-                              id="address"
-                              value={address}
-                              onChange={(e) => setAddress(e.target.value)}
-                              // className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200"
-                              className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500" // Changed text color to gray
-                              placeholder="Enter your complete address"
-                              required
-                            />
+                            <div className="flex space-x-2">
+                              <input
+                                type="text"
+                                id="address"
+                                value={address}
+                                onChange={(e) => setAddress(e.target.value)}
+                                className="flex-1 px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
+                                placeholder="Enter your complete address"
+                                required
+                              />
+                              <button
+                                type="button"
+                                onClick={calculateDistance}
+                                disabled={!address || isCalculatingDistance}
+                                className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                                  !address || isCalculatingDistance
+                                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                    : "bg-emerald-600 text-white hover:bg-emerald-700 transform hover:scale-105"
+                                }`}
+                              >
+                                {isCalculatingDistance ? "Calculating..." : "Calculate Distance"}
+                              </button>
+                            </div>
+                            {distance !== null && (
+                              <p className="text-emerald-600 mt-2">
+                                Estimated distance: <span className="font-bold">{distance} km</span>
+                              </p>
+                            )}
                           </div>
                           
                           <div className="grid md:grid-cols-2 gap-6">
@@ -569,8 +853,7 @@ const EcoCollectScheduler = () => {
                                 id="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                // className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200"
-                                className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500" // Changed text color to gray
+                                className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
                                 placeholder="your@email.com"
                                 required
                               />
@@ -583,8 +866,7 @@ const EcoCollectScheduler = () => {
                                 id="phone"
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
-                                className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500" // Changed text color to gray
-                                // className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200"
+                                className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
                                 placeholder="+1 (555) 123-4567"
                                 required
                               />
@@ -600,8 +882,7 @@ const EcoCollectScheduler = () => {
                               value={pickupNotes}
                               onChange={(e) => setPickupNotes(e.target.value)}
                               rows={3}
-                              className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500" // Changed text color to gray
-                              // className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200"
+                              className="w-full px-4 py-3 rounded-xl border-2 border-emerald-200 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-200 text-gray-500"
                               placeholder="e.g., Bags are by the back door, please call upon arrival."
                             ></textarea>
                           </div>
@@ -612,6 +893,10 @@ const EcoCollectScheduler = () => {
 
                   {currentStep === 4 && (
                     renderReviewSummary()
+                  )}
+
+                  {currentStep === 5 && (
+                    renderPaymentForm()
                   )}
 
                   <div className="flex justify-between mt-8">
@@ -630,14 +915,14 @@ const EcoCollectScheduler = () => {
                     
                     <button
                       type="submit"
-                      disabled={!formComplete}
+                      disabled={!formComplete || isSubmitting}
                       className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 transform ${
-                        formComplete 
+                        formComplete && !isSubmitting
                           ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg hover:from-emerald-700 hover:to-emerald-600 hover:scale-105"
                           : "bg-gray-200 text-gray-500 cursor-not-allowed"
                       }`}
                     >
-                      {currentStep < 4 ? "Continue →" : "Confirm & Schedule Pickup"}
+                      {isSubmitting ? "Processing..." : currentStep < 5 ? "Continue →" : "Confirm & Pay Now"}
                     </button>
                   </div>
                 </div>
