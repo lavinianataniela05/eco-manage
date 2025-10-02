@@ -11,7 +11,7 @@ export default function RootLayout({
   const pathname = usePathname()
   
   // Define routes that should NOT show sidebar
-  const noSidebarRoutes = ['/', '/login', '/register']
+  const noSidebarRoutes = ['/', '/login', '/register', '/logout']
   const shouldShowSidebar = !noSidebarRoutes.includes(pathname)
 
   return (

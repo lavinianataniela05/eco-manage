@@ -15,7 +15,6 @@ const LogoutPage: React.FC = () => {
     setIsClient(true);
   }, []);
 
-
   useEffect(() => {
     if (!isClient) return;
 
@@ -45,6 +44,7 @@ const LogoutPage: React.FC = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('preferences');
+        localStorage.removeItem('rememberedEmail');
         // Add any other cleanup logic here
       } catch (error) {
         console.error('Error clearing storage:', error);
