@@ -90,6 +90,8 @@ type UserData = {
   totalOrders: number;
   totalSpent: number;
   totalRecycling: number;
+  displayName?: string;
+  photoURL?: string;
 };
 
 export default function ProfilePage() {
@@ -173,60 +175,105 @@ export default function ProfilePage() {
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
 
-  // Listen to auth state changes
-  // Dalam useEffect yang sudah ada di profile page, tambahkan real-time listener untuk points
-useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      setCurrentUser(user);
-      await loadUserData(user.uid);
-      await loadUserActivities(user.uid);
-      await loadUserOrders(user.uid);
-      await loadUserCollections(user.uid);
-      
-      // Add real-time listener for points updates
-      const userDocRef = doc(db, 'users', user.uid);
-      const unsubscribePoints = onSnapshot(userDocRef, (doc) => {
-        if (doc.exists()) {
-          const userData = doc.data();
-          setUser(prev => ({
-            ...prev,
-            points: userData.points || 0
-          }));
+  // Debug loading state
+  useEffect(() => {
+    console.log('Loading state:', loading);
+    console.log('Current user:', currentUser);
+  }, [loading, currentUser]);
+
+  // Listen to auth state changes - FIXED VERSION
+  useEffect(() => {
+    let unsubscribePoints: (() => void) | undefined;
+    let authTimeout: NodeJS.Timeout;
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      try {
+        if (user) {
+          console.log('User authenticated:', user.uid);
+          setCurrentUser(user);
+          
+          // Load user data first, then others
+          await loadUserData(user.uid);
+          await Promise.all([
+            loadUserActivities(user.uid),
+            loadUserOrders(user.uid),
+            loadUserCollections(user.uid)
+          ]);
+
+          // Set up real-time listener for points updates
+          const userDocRef = doc(db, 'users', user.uid);
+          unsubscribePoints = onSnapshot(userDocRef, (doc) => {
+            if (doc.exists()) {
+              const userData = doc.data();
+              setUser(prev => ({
+                ...prev,
+                points: userData.points || 0,
+                name: userData.name || user.displayName || prev.name,
+                email: userData.email || user.email || prev.email
+              }));
+            }
+          });
+
+        } else {
+          console.log('No user, redirecting to login');
+          router.push('/login');
+          return;
         }
-      });
+      } catch (error) {
+        console.error('Error in auth listener:', error);
+      } finally {
+        setLoading(false);
+      }
+    });
 
-      return () => {
+    // Safety timeout to prevent infinite loading
+    authTimeout = setTimeout(() => {
+      if (loading) {
+        console.log('Auth timeout - forcing loading to false');
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+
+    // Cleanup function
+    return () => {
+      clearTimeout(authTimeout);
+      unsubscribe();
+      if (unsubscribePoints) {
         unsubscribePoints();
-      };
-    } else {
-      router.push('/login');
-    }
-    setLoading(false);
-  });
+      }
+    };
+  }, [router]);
 
-  return () => unsubscribe();
-}, [router]);
-
-  // Load user data from Firestore
+  // Load user data from Firestore - UPDATED untuk ambil data dari auth
   const loadUserData = async (userId: string) => {
     try {
+      console.log('Loading user data for:', userId);
       const userDoc = await getDoc(doc(db, 'users', userId));
       
       if (userDoc.exists()) {
         const userData = userDoc.data() as UserData;
-        setUser(userData);
+        console.log('User data loaded:', userData);
+        
+        // Gunakan data dari Firestore, fallback ke auth data jika tidak ada
+        const updatedUserData = {
+          ...userData,
+          name: userData.name || currentUser?.displayName || "",
+          email: userData.email || currentUser?.email || "",
+        };
+        
+        setUser(updatedUserData);
         setEditForm({
-          name: userData.name,
-          email: userData.email,
-          phone: userData.phone,
-          address: userData.address,
+          name: userData.name || currentUser?.displayName || "",
+          email: userData.email || currentUser?.email || "",
+          phone: userData.phone || "",
+          address: userData.address || "",
         });
         setIsNewUser(false);
       } else {
-        // New user - initialize with default values
+        // New user - initialize dengan data dari Firebase Auth
+        console.log('New user detected, initializing with auth data');
         const defaultUserData: UserData = {
-          name: "",
+          name: currentUser?.displayName || "",
           email: currentUser?.email || "",
           phone: "",
           address: "",
@@ -245,7 +292,7 @@ useEffect(() => {
         
         setUser(defaultUserData);
         setEditForm({
-          name: "",
+          name: currentUser?.displayName || "",
           email: currentUser?.email || "",
           phone: "",
           address: "",
@@ -255,45 +302,56 @@ useEffect(() => {
       }
     } catch (error) {
       console.error('Error loading user data:', error);
+      // Fallback ke auth data jika error
+      if (currentUser) {
+        setUser(prev => ({
+          ...prev,
+          name: currentUser.displayName || "",
+          email: currentUser.email || ""
+        }));
+        setEditForm(prev => ({
+          ...prev,
+          name: currentUser.displayName || "",
+          email: currentUser.email || ""
+        }));
+      }
+      setLoading(false);
     }
   };
 
-  // Load user activities with error handling for indexes
- // Load user activities with proper error handling for indexes
-const loadUserActivities = async (userId: string) => {
-  setActivitiesLoading(true);
-  try {
-    // Try with ordering first (if index exists)
-    const activitiesQuery = query(
-      collection(db, 'activities'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(activitiesQuery, 
-      (snapshot) => {
-        const activitiesData: Activity[] = [];
-        snapshot.forEach((doc) => {
-          activitiesData.push({ id: doc.id, ...doc.data() } as Activity);
-        });
-        setActivities(activitiesData);
-        setActivitiesLoading(false);
-      },
-      (error) => {
-        console.warn('Index not ready, using fallback:', error);
-        // If index doesn't exist yet, use fallback without ordering
-        loadActivitiesFallback(userId);
-      }
-    );
+  // Load user activities with proper error handling
+  const loadUserActivities = async (userId: string) => {
+    setActivitiesLoading(true);
+    try {
+      console.log('Loading activities for:', userId);
+      const activitiesQuery = query(
+        collection(db, 'activities'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const unsubscribe = onSnapshot(activitiesQuery, 
+        (snapshot) => {
+          const activitiesData: Activity[] = [];
+          snapshot.forEach((doc) => {
+            activitiesData.push({ id: doc.id, ...doc.data() } as Activity);
+          });
+          console.log('Activities loaded:', activitiesData.length);
+          setActivities(activitiesData);
+          setActivitiesLoading(false);
+        },
+        (error) => {
+          console.warn('Index not ready, using fallback:', error);
+          loadActivitiesFallback(userId);
+        }
+      );
 
-    return unsubscribe;
-  } catch (error) {
-    console.error('Error setting up activities listener:', error);
-    // Use fallback method
-    loadActivitiesFallback(userId);
-  }
-};
-
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up activities listener:', error);
+      loadActivitiesFallback(userId);
+    }
+  };
 
   // Fallback method without ordering
   const loadActivitiesFallback = async (userId: string) => {
@@ -311,11 +369,12 @@ const loadUserActivities = async (userId: string) => {
       
       // Sort manually on client side
       activitiesData.sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.date).getTime();
-        const dateB = new Date(b.createdAt || b.date).getTime();
-        return dateB - dateA; // Descending order
+        const dateA = a.createdAt?.toDate?.() || new Date(a.date);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.date);
+        return dateB.getTime() - dateA.getTime();
       });
       
+      console.log('Activities loaded (fallback):', activitiesData.length);
       setActivities(activitiesData);
     } catch (error) {
       console.error('Error loading activities fallback:', error);
@@ -328,6 +387,7 @@ const loadUserActivities = async (userId: string) => {
   const loadUserOrders = async (userId: string) => {
     setOrdersLoading(true);
     try {
+      console.log('Loading orders for:', userId);
       const ordersQuery = query(
         collection(db, 'orders'),
         where('userId', '==', userId)
@@ -350,6 +410,7 @@ const loadUserActivities = async (userId: string) => {
         totalSpent += data.total || 0;
       });
       
+      console.log('Orders loaded:', ordersData.length);
       setOrders(ordersData);
       
       // Update user stats
@@ -367,62 +428,62 @@ const loadUserActivities = async (userId: string) => {
   };
 
   // Load user collections (recycling history)
-  // Load user collections (recycling history) - simplified version
-const loadUserCollections = async (userId: string) => {
-  setCollectionsLoading(true);
-  try {
-    // Query without ordering first to avoid index requirements
-    const collectionsQuery = query(
-      collection(db, 'collections'),
-      where('userId', '==', userId)
-    );
-    
-    const snapshot = await getDocs(collectionsQuery);
-    const collectionsData: Collection[] = [];
-    let totalRecycling = 0;
-    let totalCarbonOffset = 0;
-    
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      collectionsData.push({
-        id: doc.id,
-        pickupDate: data.pickupDate,
-        pickupTime: data.pickupTime,
-        recyclingTypeLabel: data.recyclingTypeLabel,
-        bagsCount: data.bagsCount,
-        pointsEarned: data.pointsEarned || 0,
-        status: data.status,
-        totalCost: data.totalCost || 0,
-        address: data.address
+  const loadUserCollections = async (userId: string) => {
+    setCollectionsLoading(true);
+    try {
+      console.log('Loading collections for:', userId);
+      const collectionsQuery = query(
+        collection(db, 'collections'),
+        where('userId', '==', userId)
+      );
+      
+      const snapshot = await getDocs(collectionsQuery);
+      const collectionsData: Collection[] = [];
+      let totalRecycling = 0;
+      let totalCarbonOffset = 0;
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        collectionsData.push({
+          id: doc.id,
+          pickupDate: data.pickupDate,
+          pickupTime: data.pickupTime,
+          recyclingTypeLabel: data.recyclingTypeLabel,
+          bagsCount: data.bagsCount,
+          pointsEarned: data.pointsEarned || 0,
+          status: data.status,
+          totalCost: data.totalCost || 0,
+          address: data.address
+        });
+        totalRecycling += data.bagsCount || 0;
+        totalCarbonOffset += (data.bagsCount || 0) * 2.5;
       });
-      totalRecycling += data.bagsCount || 0;
-      totalCarbonOffset += (data.bagsCount || 0) * 2.5;
-    });
-    
-    // Sort manually on client side
-    collectionsData.sort((a, b) => {
-      const dateA = new Date(a.pickupDate?.toDate?.() || a.pickupDate).getTime();
-      const dateB = new Date(b.pickupDate?.toDate?.() || b.pickupDate).getTime();
-      return dateB - dateA; // Descending order
-    });
-    
-    setCollections(collectionsData);
-    
-    // Update user stats
-    setUser(prev => ({
-      ...prev,
-      completedPickups: collectionsData.filter(c => c.status === 'completed').length,
-      scheduledPickups: collectionsData.filter(c => c.status === 'scheduled').length,
-      totalRecycling,
-      carbonOffset: totalCarbonOffset
-    }));
-    
-  } catch (error) {
-    console.error('Error loading collections:', error);
-  } finally {
-    setCollectionsLoading(false);
-  }
-};
+      
+      // Sort manually on client side
+      collectionsData.sort((a, b) => {
+        const dateA = new Date(a.pickupDate?.toDate?.() || a.pickupDate).getTime();
+        const dateB = new Date(b.pickupDate?.toDate?.() || b.pickupDate).getTime();
+        return dateB - dateA;
+      });
+      
+      console.log('Collections loaded:', collectionsData.length);
+      setCollections(collectionsData);
+      
+      // Update user stats
+      setUser(prev => ({
+        ...prev,
+        completedPickups: collectionsData.filter(c => c.status === 'completed').length,
+        scheduledPickups: collectionsData.filter(c => c.status === 'scheduled').length,
+        totalRecycling,
+        carbonOffset: totalCarbonOffset
+      }));
+      
+    } catch (error) {
+      console.error('Error loading collections:', error);
+    } finally {
+      setCollectionsLoading(false);
+    }
+  };
 
   // Add activity to Firestore
   const addActivity = async (userId: string, activity: Omit<Activity, 'id'>) => {
@@ -446,7 +507,7 @@ const loadUserCollections = async (userId: string) => {
       const userData: UserData = {
         ...user,
         ...editForm,
-        email: currentUser.email || editForm.email
+        email: currentUser.email || editForm.email // Prioritize auth email
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), userData, { merge: true });
@@ -525,6 +586,7 @@ const loadUserCollections = async (userId: string) => {
         inventory: updatedInventory
       });
 
+      setUser(prev => ({ ...prev, inventory: updatedInventory }));
       setSelectedInventoryItem(null);
     } catch (error) {
       console.error('Error deleting item:', error);
@@ -606,8 +668,16 @@ const loadUserCollections = async (userId: string) => {
   };
 
   const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+      return date.toLocaleDateString(undefined, options);
+    } catch (error) {
+      return 'Invalid date';
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -627,7 +697,7 @@ const loadUserCollections = async (userId: string) => {
           <p className="text-gray-600 text-sm">Track your eco-friendly contributions and earned points</p>
         </div>
         <button
-          onClick={() => router.push('/eco-collect')}
+          onClick={() => router.push('/delivery-collection')}
           className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
         >
           <FiRefreshCw className="w-4 h-4" />
@@ -646,7 +716,7 @@ const loadUserCollections = async (userId: string) => {
           <h3 className="text-lg font-medium text-gray-700 mb-2">No recycling history yet</h3>
           <p className="text-gray-500 mb-4">Schedule your first pickup to start earning points and help the environment</p>
           <button
-            onClick={() => router.push('/eco-collect')}
+            onClick={() => router.push('/delivery-collection')}
             className="bg-gradient-to-r from-green-500 to-teal-500 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors"
           >
             Schedule First Pickup
@@ -779,6 +849,7 @@ const loadUserCollections = async (userId: string) => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading profile...</p>
+          <p className="text-sm text-gray-500 mt-2">This should only take a moment</p>
         </div>
       </div>
     );
@@ -919,7 +990,7 @@ const loadUserCollections = async (userId: string) => {
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
                 <div className="flex flex-col">
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</span>
-                                      <span className="text-2xl font-bold text-green-600 mt-1">{user.completedPickups}</span>
+                  <span className="text-2xl font-bold text-green-600 mt-1">{user.completedPickups}</span>
                   <span className="text-xs text-gray-500 mt-1">Pickups</span>
                 </div>
               </div>
@@ -1354,7 +1425,9 @@ const loadUserCollections = async (userId: string) => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="Enter your email"
                       required
+                      disabled // Email dari auth tidak bisa diubah
                     />
+                    <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
                   </div>
 
                   <div>

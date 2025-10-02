@@ -397,7 +397,7 @@ export default function Marketplace() {
   };
 
   const handleProfile = () => {
-    router.push('/profile-page');
+    router.push('/profile-reward');
   };
 
   const filteredProducts = products.filter(product => {
@@ -645,7 +645,7 @@ export default function Marketplace() {
                 onClick={() => {
                   setIsCheckoutOpen(false);
                   setOrderComplete(false);
-                  router.push('/profile-page');
+                  router.push('/profile-reward');
                 }}
                 className="w-full bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-colors"
               >
