@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiEdit, FiStar, FiCheck, FiTrash2, FiUser, FiMail, 
@@ -9,7 +9,10 @@ import {
   FiTrendingUp,
   FiRefreshCw,
   FiShoppingCart,
-  FiCreditCard
+  FiCreditCard,
+  FiHeart,
+  FiFrown,
+  FiZap
 } from 'react-icons/fi';
 import { 
   doc, getDoc, setDoc, updateDoc, onSnapshot, 
@@ -23,7 +26,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
-// Types
+// Types (update dengan subscription)
 type Reward = {
   id: number;
   name: string;
@@ -45,7 +48,7 @@ type InventoryItem = {
 
 type Activity = {
   id: string;
-  type: 'pickup' | 'reward' | 'level' | 'transaction' | 'purchase';
+  type: 'pickup' | 'reward' | 'level' | 'transaction' | 'purchase' | 'subscription';
   title: string;
   description: string;
   date: string;
@@ -74,6 +77,19 @@ type Order = {
   pointsEarned: number;
 };
 
+type SubscriptionTier = 'basic' | 'pro' | null;
+type SubscriptionStatus = 'active' | 'inactive' | 'canceled' | 'trial';
+
+type UserSubscription = {
+  tier: SubscriptionTier;
+  status: SubscriptionStatus;
+  isActive: boolean;
+  startDate: string;
+  endDate: string;
+  billingCycle?: string;
+  duration?: number;
+};
+
 type UserData = {
   name: string;
   email: string;
@@ -92,6 +108,7 @@ type UserData = {
   totalRecycling: number;
   displayName?: string;
   photoURL?: string;
+  subscription?: UserSubscription;
 };
 
 export default function ProfilePage() {
@@ -112,7 +129,14 @@ export default function ProfilePage() {
     inventory: [],
     totalOrders: 0,
     totalSpent: 0,
-    totalRecycling: 0
+    totalRecycling: 0,
+    subscription: {
+      tier: null,
+      status: 'inactive',
+      isActive: false,
+      startDate: '',
+      endDate: ''
+    }
   });
 
   const [loading, setLoading] = useState(true);
@@ -164,7 +188,6 @@ export default function ProfilePage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<'activity' | 'rewards' | 'inventory' | 'orders' | 'recycling'>('activity');
-  const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
     email: "",
@@ -175,13 +198,23 @@ export default function ProfilePage() {
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
 
+  // MODAL POPUP STATE
+  const [showProfilePopup, setShowProfilePopup] = useState(false);
+  const [hasShownPopup, setHasShownPopup] = useState(false);
+
+  // Check if user is Premium Member
+  const isPremiumMember = user.subscription?.isActive && user.subscription.tier === 'pro';
+
   // Debug loading state
   useEffect(() => {
     console.log('Loading state:', loading);
     console.log('Current user:', currentUser);
-  }, [loading, currentUser]);
+    console.log('Is new user:', isNewUser);
+    console.log('Is Premium Member:', isPremiumMember);
+    console.log('Subscription:', user.subscription);
+  }, [loading, currentUser, isNewUser, isPremiumMember, user.subscription]);
 
-  // Listen to auth state changes - FIXED VERSION
+  // Listen to auth state changes - UPDATED dengan subscription
   useEffect(() => {
     let unsubscribePoints: (() => void) | undefined;
     let authTimeout: NodeJS.Timeout;
@@ -192,24 +225,30 @@ export default function ProfilePage() {
           console.log('User authenticated:', user.uid);
           setCurrentUser(user);
           
-          // Load user data first, then others
+          // Load user data first
           await loadUserData(user.uid);
+          
+          // Load other data in parallel
           await Promise.all([
             loadUserActivities(user.uid),
             loadUserOrders(user.uid),
             loadUserCollections(user.uid)
           ]);
 
-          // Set up real-time listener for points updates
+          // Set up real-time listener for user updates (including subscription)
           const userDocRef = doc(db, 'users', user.uid);
           unsubscribePoints = onSnapshot(userDocRef, (doc) => {
             if (doc.exists()) {
               const userData = doc.data();
+              console.log('Real-time user update:', userData);
               setUser(prev => ({
                 ...prev,
                 points: userData.points || 0,
                 name: userData.name || user.displayName || prev.name,
-                email: userData.email || user.email || prev.email
+                email: userData.email || user.email || prev.email,
+                phone: userData.phone || prev.phone,
+                address: userData.address || prev.address,
+                subscription: userData.subscription || prev.subscription
               }));
             }
           });
@@ -226,15 +265,14 @@ export default function ProfilePage() {
       }
     });
 
-    // Safety timeout to prevent infinite loading
+    // Safety timeout
     authTimeout = setTimeout(() => {
       if (loading) {
         console.log('Auth timeout - forcing loading to false');
         setLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 10000);
 
-    // Cleanup function
     return () => {
       clearTimeout(authTimeout);
       unsubscribe();
@@ -244,7 +282,7 @@ export default function ProfilePage() {
     };
   }, [router]);
 
-  // Load user data from Firestore - UPDATED untuk ambil data dari auth
+  // Load user data from Firestore - UPDATED dengan subscription
   const loadUserData = async (userId: string) => {
     try {
       console.log('Loading user data for:', userId);
@@ -254,11 +292,21 @@ export default function ProfilePage() {
         const userData = userDoc.data() as UserData;
         console.log('User data loaded:', userData);
         
+        // Check if user has completed profile (has name, phone, address)
+        const hasCompletedProfile = userData.name && userData.phone && userData.address;
+        
         // Gunakan data dari Firestore, fallback ke auth data jika tidak ada
         const updatedUserData = {
           ...userData,
           name: userData.name || currentUser?.displayName || "",
           email: userData.email || currentUser?.email || "",
+          subscription: userData.subscription || {
+            tier: null,
+            status: 'inactive',
+            isActive: false,
+            startDate: '',
+            endDate: ''
+          }
         };
         
         setUser(updatedUserData);
@@ -268,7 +316,10 @@ export default function ProfilePage() {
           phone: userData.phone || "",
           address: userData.address || "",
         });
-        setIsNewUser(false);
+        
+        // Set isNewUser berdasarkan apakah profile sudah lengkap
+        setIsNewUser(!hasCompletedProfile);
+        
       } else {
         // New user - initialize dengan data dari Firebase Auth
         console.log('New user detected, initializing with auth data');
@@ -287,7 +338,14 @@ export default function ProfilePage() {
           inventory: [],
           totalOrders: 0,
           totalSpent: 0,
-          totalRecycling: 0
+          totalRecycling: 0,
+          subscription: {
+            tier: null,
+            status: 'inactive',
+            isActive: false,
+            startDate: '',
+            endDate: ''
+          }
         };
         
         setUser(defaultUserData);
@@ -298,7 +356,6 @@ export default function ProfilePage() {
           address: "",
         });
         setIsNewUser(true);
-        setIsEditing(true);
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -319,7 +376,31 @@ export default function ProfilePage() {
     }
   };
 
-  // Load user activities with proper error handling
+  // FIXED: Tampilkan popup otomatis untuk new user
+  const isNewUserRef = useRef(isNewUser);
+  const loadingRef = useRef(loading);
+  const hasShownPopupRef = useRef(hasShownPopup);
+
+  // Update refs when state changes
+  useEffect(() => {
+    isNewUserRef.current = isNewUser;
+    loadingRef.current = loading;
+    hasShownPopupRef.current = hasShownPopup;
+  });
+
+  useEffect(() => {
+    if (isNewUserRef.current && !loadingRef.current && !hasShownPopupRef.current) {
+      console.log('Showing profile popup for new/incomplete user');
+      const timer = setTimeout(() => {
+        setShowProfilePopup(true);
+        setHasShownPopup(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isNewUser, loading, hasShownPopup]);
+
+  // Load user activities dengan proper error handling
   const loadUserActivities = async (userId: string) => {
     setActivitiesLoading(true);
     try {
@@ -507,14 +588,14 @@ export default function ProfilePage() {
       const userData: UserData = {
         ...user,
         ...editForm,
-        email: currentUser.email || editForm.email // Prioritize auth email
+        email: currentUser.email || editForm.email
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), userData, { merge: true });
       
       setUser(userData);
-      setIsEditing(false);
       setIsNewUser(false);
+      setShowProfilePopup(false);
 
       // Add welcome activity for new users
       if (isNewUser) {
@@ -522,7 +603,12 @@ export default function ProfilePage() {
           type: 'level',
           title: "Welcome!",
           description: "Profile completed successfully",
-          date: new Date().toISOString().split('T')[0]
+          date: new Date().toISOString().split('T')[0],
+          points: 50
+        });
+        
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          points: increment(50)
         });
       }
 
@@ -593,37 +679,53 @@ export default function ProfilePage() {
     }
   };
 
-  // Determine user badge based on points
+  // Determine user badge based on points dan subscription
   const getUserBadge = () => {
+    // Jika user adalah premium member, override dengan badge premium
+    if (isPremiumMember) {
+      return { 
+        name: "🌟 Premium Member", 
+        color: "from-purple-500 to-pink-600",
+        nextLevel: null,
+        progress: 100,
+        isPremium: true
+      };
+    }
+
     if (user.points >= 2000) return { 
       name: "Eco Legend", 
       color: "from-purple-500 to-indigo-600",
       nextLevel: null,
-      progress: 100
+      progress: 100,
+      isPremium: false
     };
     if (user.points >= 1500) return { 
       name: "Eco Champion", 
       color: "from-teal-500 to-cyan-600",
       nextLevel: "Eco Legend (2000 pts)",
-      progress: Math.min(100, ((user.points - 1500) / 500) * 100)
+      progress: Math.min(100, ((user.points - 1500) / 500) * 100),
+      isPremium: false
     };
     if (user.points >= 1000) return { 
       name: "Green Guardian", 
       color: "from-emerald-500 to-teal-600",
       nextLevel: "Eco Champion (1500 pts)",
-      progress: Math.min(100, ((user.points - 1000) / 500) * 100)
+      progress: Math.min(100, ((user.points - 1000) / 500) * 100),
+      isPremium: false
     };
     if (user.points >= 500) return { 
       name: "Eco Explorer", 
       color: "from-blue-500 to-cyan-500",
       nextLevel: "Green Guardian (1000 pts)",
-      progress: Math.min(100, ((user.points - 500) / 500) * 100)
+      progress: Math.min(100, ((user.points - 500) / 500) * 100),
+      isPremium: false
     };
     return { 
       name: "Eco Starter", 
       color: "from-green-500 to-emerald-500",
       nextLevel: "Eco Explorer (500 pts)",
-      progress: Math.min(100, (user.points / 500) * 100)
+      progress: Math.min(100, (user.points / 500) * 100),
+      isPremium: false
     };
   };
 
@@ -648,7 +750,8 @@ export default function ProfilePage() {
     reward: "bg-amber-100 text-amber-800",
     level: "bg-purple-100 text-purple-800",
     transaction: "bg-green-100 text-green-800",
-    purchase: "bg-indigo-100 text-indigo-800"
+    purchase: "bg-indigo-100 text-indigo-800",
+    subscription: "bg-pink-100 text-pink-800"
   };
 
   const categoryColors: Record<string, string> = {
@@ -687,6 +790,81 @@ export default function ProfilePage() {
       minimumFractionDigits: 0
     }).format(amount);
   };
+
+  // Premium Benefits Component
+  const PremiumBenefits = () => (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200"
+    >
+      <div className="flex items-center space-x-3 mb-3">
+        <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg">
+          <FiFrown className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="font-semibold text-purple-800">🌟 Premium Member Benefits</h3>
+          <p className="text-purple-600 text-sm">You're enjoying exclusive perks!</p>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="flex items-center space-x-2">
+          <FiTrendingUp className="w-4 h-4 text-green-500" />
+          <span className="text-gray-700">20% Discount</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <FiZap className="w-4 h-4 text-yellow-500" />
+          <span className="text-gray-700">+50% Points</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <FiStar className="w-4 h-4 text-amber-500" />
+          <span className="text-gray-700">Priority Support</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <FiGift className="w-4 h-4 text-pink-500" />
+          <span className="text-gray-700">Exclusive Rewards</span>
+        </div>
+      </div>
+
+      {user.subscription?.billingCycle && (
+        <div className="mt-3 pt-3 border-t border-purple-200">
+          <p className="text-xs text-purple-600">
+            Current plan: <strong>{user.subscription.billingCycle}</strong>
+            {user.subscription.endDate && (
+              <span> • Renews: {formatDate(user.subscription.endDate)}</span>
+            )}
+          </p>
+        </div>
+      )}
+    </motion.div>
+  );
+
+  // Upgrade CTA Component
+  const UpgradeCTA = () => (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      className="mb-4 p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl border border-purple-300 cursor-pointer shadow-lg"
+      onClick={() => router.push('/subscription')}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-white/20 rounded-lg">
+            <FiFrown className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white text-sm">Upgrade to Premium</h3>
+            <p className="text-white/90 text-xs">Get 20% discount + exclusive benefits</p>
+          </div>
+        </div>
+        <div className="text-white">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </motion.div>
+  );
 
   // Recycling History Tab Component
   const RecyclingHistoryTab = () => (
@@ -843,6 +1021,134 @@ export default function ProfilePage() {
     </div>
   );
 
+  // Profile Popup Component
+  const ProfilePopup = () => (
+    <AnimatePresence>
+      {showProfilePopup && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowProfilePopup(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-800">
+                  {isNewUser ? "Complete Your Profile" : "Edit Profile"}
+                </h2>
+                <button
+                  onClick={() => setShowProfilePopup(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {isNewUser && (
+                <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-blue-500 rounded-lg mr-3">
+                      <FiStar className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-blue-800 font-medium text-sm">Complete your profile to earn 50 bonus points!</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Enter your full name"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-50"
+                    placeholder="Enter your email"
+                    required
+                    disabled
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Enter your phone number"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Address *
+                  </label>
+                  <textarea
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Enter your complete address"
+                    required
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowProfilePopup(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    {isNewUser ? "Skip for now" : "Cancel"}
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors"
+                  >
+                    {isNewUser ? "Complete Profile" : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-cyan-50 flex items-center justify-center">
@@ -879,13 +1185,32 @@ export default function ProfilePage() {
               <span className="font-bold text-gray-800">{user.points.toLocaleString()}</span>
               <span className="ml-1 text-gray-600">pts</span>
             </div>
+            
+            {/* TOMBOL SUBSCRIBE - Tampilkan berbeda untuk premium vs non-premium */}
+            {isPremiumMember ? (
+              <div className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full shadow-md">
+                <FiFrown className="mr-2" />
+                <span>Premium Member</span>
+              </div>
+            ) : (
+              <button 
+                onClick={() => router.push('/subscription')}
+                className="flex items-center px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full hover:from-pink-600 hover:to-rose-600 transition-all shadow-md hover:shadow-lg"
+              >
+                <FiHeart className="mr-2" />
+                <span>Subscribe</span>
+              </button>
+            )}
+
+            {/* TOMBOL EDIT PROFILE */}
             <button 
-              onClick={() => setIsEditing(true)}
+              onClick={() => setShowProfilePopup(true)}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-full hover:from-green-600 hover:to-teal-600 transition-all shadow-md hover:shadow-lg"
             >
               <FiEdit className="mr-2" />
               {isNewUser ? "Complete Profile" : "Edit Profile"}
             </button>
+
             <button 
               onClick={() => router.push('/marketplace')}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-full hover:from-blue-600 hover:to-cyan-600 transition-all shadow-md hover:shadow-lg"
@@ -919,6 +1244,12 @@ export default function ProfilePage() {
                     <div className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-md border border-gray-200">
                       <div className={cn("w-6 h-6 rounded-full bg-gradient-to-r", getUserBadge().color)}></div>
                     </div>
+                    {/* Premium Badge */}
+                    {isPremiumMember && (
+                      <div className="absolute top-0 right-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-1 shadow-lg">
+                        <FiFrown className="w-4 h-4 text-white" />
+                      </div>
+                    )}
                   </motion.div>
                   
                   <h2 className="text-2xl font-bold text-gray-800 text-center">{user.name || "New User"}</h2>
@@ -934,6 +1265,13 @@ export default function ProfilePage() {
                     {getUserBadge().name}
                   </motion.div>
                 </div>
+                
+                {/* TAMPILKAN PREMIUM BENEFITS ATAU UPGRADE CTA */}
+                {isPremiumMember ? (
+                  <PremiumBenefits />
+                ) : (
+                  <UpgradeCTA />
+                )}
                 
                 <div className="border-t border-gray-100 pt-4 mt-4 space-y-3">
                   <div className="flex items-start">
@@ -975,6 +1313,21 @@ export default function ProfilePage() {
                       <p className="text-sm font-medium text-gray-900">{user.memberSince}</p>
                     </div>
                   </div>
+
+                  {/* Subscription Info */}
+                  {isPremiumMember && user.subscription?.endDate && (
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0 pt-1">
+                        <FiFrown className="text-purple-400" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-gray-500">Premium Until</p>
+                        <p className="text-sm font-medium text-purple-600">
+                          {formatDate(user.subscription.endDate)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1140,6 +1493,7 @@ export default function ProfilePage() {
                                 {activity.type === 'level' && <FiAward className="w-4 h-4" />}
                                 {activity.type === 'transaction' && <FiCreditCard className="w-4 h-4" />}
                                 {activity.type === 'purchase' && <FiShoppingBag className="w-4 h-4" />}
+                                {activity.type === 'subscription' && <FiFrown className="w-4 h-4" />}
                               </div>
                               <div className="flex-1">
                                 <h4 className="font-medium text-gray-800">{activity.title}</h4>
@@ -1165,7 +1519,7 @@ export default function ProfilePage() {
                     </motion.div>
                   )}
 
-                  {/* Rewards Tab */}
+                  {/* Rewards Tab - Tampilkan badge premium jika user premium */}
                   {activeTab === 'rewards' && (
                     <motion.div
                       key="rewards"
@@ -1178,9 +1532,20 @@ export default function ProfilePage() {
                       <div className="flex justify-between items-center mb-6">
                         <div>
                           <h2 className="text-xl font-semibold text-gray-800">Available Rewards</h2>
-                          <p className="text-gray-600 text-sm">Redeem your points for eco-friendly products</p>
+                          <p className="text-gray-600 text-sm">
+                            {isPremiumMember 
+                              ? "🎉 Premium members get exclusive rewards!" 
+                              : "Redeem your points for eco-friendly products"
+                            }
+                          </p>
                         </div>
                         <div className="flex items-center space-x-2">
+                          {isPremiumMember && (
+                            <div className="flex items-center bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                              <FiFrown className="w-3 h-3 mr-1" />
+                              PREMIUM
+                            </div>
+                          )}
                           <select
                             value={rewardFilter}
                             onChange={(e) => setRewardFilter(e.target.value as any)}
@@ -1200,8 +1565,21 @@ export default function ProfilePage() {
                           <motion.div
                             key={reward.id}
                             whileHover={{ scale: 1.02 }}
-                            className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all"
+                            className={cn(
+                              "bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-all relative",
+                              isPremiumMember ? "border-purple-200 ring-1 ring-purple-100" : "border-gray-200"
+                            )}
                           >
+                            {/* Premium Badge untuk beberapa reward */}
+                            {isPremiumMember && reward.id <= 2 && (
+                              <div className="absolute top-3 left-3 z-10">
+                                <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center">
+                                  <FiFrown className="w-3 h-3 mr-1" />
+                                  PREMIUM
+                                </div>
+                              </div>
+                            )}
+
                             <div className="h-48 bg-gradient-to-br from-green-100 to-cyan-100 relative overflow-hidden">
                               <div className="absolute inset-0 flex items-center justify-center text-4xl">
                                 {reward.category === 'home' && '🏠'}
@@ -1224,11 +1602,24 @@ export default function ProfilePage() {
                                 <h3 className="font-semibold text-gray-800">{reward.name}</h3>
                                 <div className="flex items-center text-amber-500 font-bold">
                                   <FiStar className="w-4 h-4 mr-1" />
-                                  {reward.points}
+                                  {isPremiumMember ? Math.floor(reward.points * 0.8) : reward.points}
+                                  {isPremiumMember && (
+                                    <span className="text-xs text-gray-400 line-through ml-1">
+                                      {reward.points}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               
                               <p className="text-sm text-gray-600 mb-4">{reward.description}</p>
+                              
+                              {isPremiumMember && reward.id <= 2 && (
+                                <div className="mb-3 p-2 bg-purple-50 rounded-lg border border-purple-200">
+                                  <p className="text-xs text-purple-700 font-medium">
+                                    🎉 Premium exclusive - 20% less points!
+                                  </p>
+                                </div>
+                              )}
                               
                               <div className="flex justify-between items-center">
                                 <button
@@ -1240,19 +1631,19 @@ export default function ProfilePage() {
                                 
                                 <button
                                   onClick={() => handleClaimReward(reward.id)}
-                                  disabled={reward.claimed || user.points < reward.points}
+                                  disabled={reward.claimed || user.points < (isPremiumMember && reward.id <= 2 ? Math.floor(reward.points * 0.8) : reward.points)}
                                   className={cn(
                                     "px-4 py-2 rounded-lg text-sm font-medium transition-all",
                                     reward.claimed
                                       ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                      : user.points < reward.points
+                                      : user.points < (isPremiumMember && reward.id <= 2 ? Math.floor(reward.points * 0.8) : reward.points)
                                       ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                                       : "bg-gradient-to-r from-green-500 to-teal-500 text-white hover:from-green-600 hover:to-teal-600"
                                   )}
                                 >
                                   {reward.claimed ? (
                                     <>Claimed <FiCheck className="inline ml-1" /></>
-                                  ) : user.points < reward.points ? (
+                                  ) : user.points < (isPremiumMember && reward.id <= 2 ? Math.floor(reward.points * 0.8) : reward.points) ? (
                                     "Insufficient Points"
                                   ) : (
                                     "Claim Reward"
@@ -1369,116 +1760,10 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Edit Profile Modal */}
-      <AnimatePresence>
-        {isEditing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-800">
-                    {isNewUser ? "Complete Your Profile" : "Edit Profile"}
-                  </h2>
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+      {/* PROFILE POPUP COMPONENT */}
+      <ProfilePopup />
 
-                <form onSubmit={handleEditSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Enter your full name"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Enter your email"
-                      required
-                      disabled // Email dari auth tidak bisa diubah
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number
-                    </label>
-                    <input
-                      type="tel"
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Enter your phone number"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address
-                    </label>
-                    <textarea
-                      value={editForm.address}
-                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Enter your complete address"
-                    />
-                  </div>
-
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditing(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors"
-                    >
-                      {isNewUser ? "Complete Profile" : "Save Changes"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Reward Detail Modal */}
+      {/* Reward Detail Modal - Updated dengan discount premium */}
       <AnimatePresence>
         {selectedReward && (
           <motion.div
@@ -1509,6 +1794,14 @@ export default function ProfilePage() {
                       {selectedReward.category}
                     </span>
                   </div>
+                  {isPremiumMember && selectedReward.id <= 2 && (
+                    <div className="absolute top-4 left-4">
+                      <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center">
+                        <FiFrown className="w-3 h-3 mr-1" />
+                        PREMIUM
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <h3 className="text-xl font-bold text-gray-800 mb-2">{selectedReward.name}</h3>
@@ -1517,23 +1810,40 @@ export default function ProfilePage() {
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center text-amber-500 font-bold text-lg">
                     <FiStar className="w-5 h-5 mr-1" />
-                    {selectedReward.points} points
+                    {isPremiumMember && selectedReward.id <= 2 ? (
+                      <>
+                        <span>{Math.floor(selectedReward.points * 0.8)} points</span>
+                        <span className="text-sm text-gray-400 line-through ml-2">
+                          {selectedReward.points}
+                        </span>
+                      </>
+                    ) : (
+                      <span>{selectedReward.points} points</span>
+                    )}
                   </div>
                   <div className={cn(
                     "px-3 py-1 rounded-full text-sm font-medium",
                     selectedReward.claimed 
                       ? "bg-gray-100 text-gray-400" 
-                      : user.points >= selectedReward.points 
+                      : user.points >= (isPremiumMember && selectedReward.id <= 2 ? Math.floor(selectedReward.points * 0.8) : selectedReward.points)
                       ? "bg-green-100 text-green-800" 
                       : "bg-red-100 text-red-800"
                   )}>
                     {selectedReward.claimed 
                       ? "Already Claimed" 
-                      : user.points >= selectedReward.points 
+                      : user.points >= (isPremiumMember && selectedReward.id <= 2 ? Math.floor(selectedReward.points * 0.8) : selectedReward.points)
                       ? "Available" 
                       : "Need More Points"}
                   </div>
                 </div>
+
+                {isPremiumMember && selectedReward.id <= 2 && (
+                  <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <p className="text-sm text-purple-700 font-medium">
+                      🎉 Premium Benefit: You get 20% discount on this reward!
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex space-x-3">
                   <button
@@ -1544,10 +1854,10 @@ export default function ProfilePage() {
                   </button>
                   <button
                     onClick={() => handleClaimReward(selectedReward.id)}
-                    disabled={selectedReward.claimed || user.points < selectedReward.points}
+                    disabled={selectedReward.claimed || user.points < (isPremiumMember && selectedReward.id <= 2 ? Math.floor(selectedReward.points * 0.8) : selectedReward.points)}
                     className={cn(
                       "flex-1 px-4 py-2 rounded-lg text-white font-medium transition-all",
-                      selectedReward.claimed || user.points < selectedReward.points
+                      selectedReward.claimed || user.points < (isPremiumMember && selectedReward.id <= 2 ? Math.floor(selectedReward.points * 0.8) : selectedReward.points)
                         ? "bg-gray-300 cursor-not-allowed"
                         : "bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600"
                     )}

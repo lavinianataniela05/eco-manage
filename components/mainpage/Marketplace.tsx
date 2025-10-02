@@ -17,7 +17,9 @@ import {
   X,
   Plus,
   Minus,
-  User
+  User,
+  Crown,
+  Zap
 } from 'lucide-react';
 import {
   collection,
@@ -37,7 +39,7 @@ import {
 import { db, auth } from '@/firebase/config'
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
-// Types
+// Types (import dari file types di atas)
 type Product = {
   id: string;
   name: string;
@@ -55,6 +57,7 @@ type Product = {
   tags: string[];
   stock: number;
   status: 'active' | 'inactive';
+  subscriptionDiscount: number;
 };
 
 type CartItem = {
@@ -63,16 +66,29 @@ type CartItem = {
   product?: Product;
 };
 
+type UserSubscription = {
+  tier: 'basic' | 'pro' | 'enterprise' | null;
+  status: 'active' | 'inactive' | 'canceled' | 'trial';
+  isActive: boolean;
+  startDate: string;
+  endDate: string;
+};
+
 type Order = {
   id: string;
   userId: string;
   items: CartItem[];
+  subtotal: number;
+  discount: number;
+  subscriptionDiscount: number;
+  deliveryFee: number;
   total: number;
   pointsEarned: number;
   paymentMethod: string;
   status: 'pending' | 'paid' | 'shipped' | 'delivered';
   createdAt: Date;
   transactionId: string;
+  subscriptionApplied: boolean;
 };
 
 type PaymentMethod = 'credit_card' | 'gopay' | 'ovo' | 'bank_transfer';
@@ -85,14 +101,16 @@ const CATEGORIES = [
   { name: 'Kitchen', count: 0, icon: <Tag className="w-5 h-5" /> }
 ];
 
-// Points calculation
-const calculatePointsFromTransaction = (amount: number): number => {
-  return Math.floor(amount / 10000);
+// Points calculation dengan bonus untuk subscriber
+const calculatePointsFromTransaction = (amount: number, isSubscribed: boolean): number => {
+  const basePoints = Math.floor(amount / 10000);
+  return isSubscribed ? Math.floor(basePoints * 1.5) : basePoints; // 50% bonus points untuk subscriber
 };
 
 export default function Marketplace() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [userSubscription, setUserSubscription] = useState<UserSubscription | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,19 +124,20 @@ export default function Marketplace() {
   const [orderComplete, setOrderComplete] = useState(false);
   const [orderDetails, setOrderDetails] = useState<Order | null>(null);
 
-  // Load products
+  // Load products dan user data
   useEffect(() => {
     loadProducts();
   }, []);
 
-  // Auth state listener
+  // Auth state listener dengan load subscription
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        await loadUserCart(user.uid);
+        await loadUserData(user.uid);
       } else {
         setCart([]);
+        setUserSubscription(null);
       }
     });
     return () => unsubscribe();
@@ -132,7 +151,12 @@ export default function Marketplace() {
       
       const productsData: Product[] = [];
       snapshot.forEach(doc => {
-        productsData.push({ id: doc.id, ...doc.data() } as Product);
+        const data = doc.data();
+        productsData.push({ 
+          id: doc.id, 
+          ...data,
+          subscriptionDiscount: data.subscriptionDiscount || 20 // Default 20% discount untuk subscriber
+        } as Product);
       });
       
       setProducts(productsData);
@@ -141,6 +165,49 @@ export default function Marketplace() {
       console.error('Error loading products:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserData = async (userId: string) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // Load subscription data
+        const subscription: UserSubscription = userData.subscription || {
+          tier: null,
+          status: 'inactive',
+          isActive: false,
+          startDate: '',
+          endDate: ''
+        };
+        setUserSubscription(subscription);
+        
+        // Load cart
+        const cartItems: CartItem[] = userData.cart || [];
+        const populatedCart = await Promise.all(
+          cartItems.map(async (item) => {
+            const productDoc = await getDoc(doc(db, 'products', item.productId));
+            if (productDoc.exists()) {
+              const productData = productDoc.data();
+              return {
+                ...item,
+                product: { 
+                  id: productDoc.id, 
+                  ...productData,
+                  subscriptionDiscount: productData.subscriptionDiscount || 20
+                } as Product
+              };
+            }
+            return item;
+          })
+        );
+        
+        setCart(populatedCart.filter(item => item.product));
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
     }
   };
 
@@ -159,33 +226,6 @@ export default function Marketplace() {
     });
   };
 
-  const loadUserCart = async (userId: string) => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const cartItems: CartItem[] = userData.cart || [];
-        
-        const populatedCart = await Promise.all(
-          cartItems.map(async (item) => {
-            const productDoc = await getDoc(doc(db, 'products', item.productId));
-            if (productDoc.exists()) {
-              return {
-                ...item,
-                product: { id: productDoc.id, ...productDoc.data() } as Product
-              };
-            }
-            return item;
-          })
-        );
-        
-        setCart(populatedCart.filter(item => item.product));
-      }
-    } catch (error) {
-      console.error('Error loading cart:', error);
-    }
-  };
-
   const saveCartToFirebase = async (userId: string, cartItems: CartItem[]) => {
     try {
       const cartForFirebase = cartItems.map(item => ({
@@ -200,6 +240,51 @@ export default function Marketplace() {
       console.error('Error saving cart:', error);
     }
   };
+
+  // Calculate prices dengan subscription discount
+  const calculateProductPrice = (product: Product): number => {
+    if (userSubscription?.isActive && product.subscriptionDiscount > 0) {
+      const discountAmount = product.price * (product.subscriptionDiscount / 100);
+      return Math.floor(product.price - discountAmount);
+    }
+    return product.price;
+  };
+
+  const calculateCartTotals = () => {
+    const subtotal = cart.reduce((sum, item) => {
+      if (!item.product) return sum;
+      const itemPrice = calculateProductPrice(item.product);
+      return sum + itemPrice * item.quantity;
+    }, 0);
+
+    const originalSubtotal = cart.reduce((sum, item) => {
+      return sum + (item.product?.price || 0) * item.quantity;
+    }, 0);
+
+    const subscriptionDiscount = userSubscription?.isActive ? 
+      originalSubtotal - subtotal : 0;
+
+    const deliveryFee = cart.reduce((sum, item) => {
+      if (!item.product) return sum;
+      const deliveryCost = item.product.delivery === 'Free' ? 0 : 
+                          parseInt(item.product.delivery.replace(/\D/g, '')) || 0;
+      return sum + deliveryCost;
+    }, 0);
+
+    const total = subtotal + deliveryFee;
+    const pointsEarned = calculatePointsFromTransaction(total, userSubscription?.isActive || false);
+
+    return {
+      subtotal,
+      originalSubtotal,
+      subscriptionDiscount,
+      deliveryFee,
+      total,
+      pointsEarned
+    };
+  };
+
+  const { subtotal, originalSubtotal, subscriptionDiscount, deliveryFee, total, pointsEarned } = calculateCartTotals();
 
   const handleAddToCart = async (productId: string) => {
     if (!currentUser) {
@@ -326,12 +411,17 @@ export default function Marketplace() {
         id: orderId,
         userId: currentUser.uid,
         items: cart,
+        subtotal: originalSubtotal,
+        discount: 0,
+        subscriptionDiscount,
+        deliveryFee,
         total,
         pointsEarned,
         paymentMethod,
         status: 'paid',
         createdAt: new Date(),
-        transactionId: `TXN-${Date.now()}`
+        transactionId: `TXN-${Date.now()}`,
+        subscriptionApplied: userSubscription?.isActive || false
       };
 
       // Save order
@@ -350,7 +440,8 @@ export default function Marketplace() {
         description: `Earned points from purchase #${order.transactionId}`,
         date: new Date().toISOString().split('T')[0],
         points: pointsEarned,
-        createdAt: new Date()
+        createdAt: new Date(),
+        subscriptionBonus: userSubscription?.isActive || false
       });
 
       // Update product stock
@@ -377,27 +468,16 @@ export default function Marketplace() {
     }
   };
 
-  // Calculate totals
-  const subtotal = cart.reduce((sum, item) => {
-    return sum + (item.product?.price || 0) * item.quantity;
-  }, 0);
-
-  const deliveryFee = cart.reduce((sum, item) => {
-    if (!item.product) return sum;
-    const deliveryCost = item.product.delivery === 'Free' ? 0 : 
-                        parseInt(item.product.delivery.replace(/\D/g, '')) || 0;
-    return sum + deliveryCost;
-  }, 0);
-
-  const total = subtotal + deliveryFee;
-  const pointsEarned = calculatePointsFromTransaction(total);
-
   const handleSellItem = () => {
     router.push('/sell');
   };
 
   const handleProfile = () => {
     router.push('/profile-reward');
+  };
+
+  const handleUpgradeSubscription = () => {
+    router.push('/subscription');
   };
 
   const filteredProducts = products.filter(product => {
@@ -408,7 +488,7 @@ export default function Marketplace() {
     return matchesSearch && matchesCategory;
   });
 
-  // Cart Sidebar Component
+  // Cart Sidebar Component dengan Subscription Discount
   const CartSidebar = () => (
     <div className={`fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform transition-transform duration-300 z-50 ${
       isCartOpen ? 'translate-x-0' : 'translate-x-full'
@@ -432,66 +512,127 @@ export default function Marketplace() {
             </div>
           ) : (
             <div className="space-y-4">
-              {cart.map((item) => (
-                <div key={item.productId} className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
-                  <img
-                    src={item.product?.image || '/api/placeholder/80/80'}
-                    alt={item.product?.name}
-                    className="w-16 h-16 object-cover rounded-lg"
-                  />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-sm text-gray-800">{item.product?.name}</h3>
-                    <p className="text-sm text-gray-600">Rp {item.product?.price.toLocaleString()}</p>
-                    {item.product && item.quantity > item.product.stock && (
-                      <p className="text-xs text-red-600">Only {item.product.stock} available</p>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
+              {cart.map((item) => {
+                const finalPrice = calculateProductPrice(item.product!);
+                const hasDiscount = userSubscription?.isActive && finalPrice < item.product!.price;
+                
+                return (
+                  <div key={item.productId} className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                    <img
+                      src={item.product?.image || '/api/placeholder/80/80'}
+                      alt={item.product?.name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-sm text-gray-800">{item.product?.name}</h3>
+                      <div className="flex items-center space-x-2">
+                        {hasDiscount ? (
+                          <>
+                            <p className="text-sm font-semibold text-teal-600">
+                              Rp {finalPrice.toLocaleString()}
+                            </p>
+                            <p className="text-sm text-gray-500 line-through">
+                              Rp {item.product?.price.toLocaleString()}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-gray-600">Rp {item.product?.price.toLocaleString()}</p>
+                        )}
+                      </div>
+                      {item.product && item.quantity > item.product.stock && (
+                        <p className="text-xs text-red-600">Only {item.product.stock} available</p>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="w-8 text-center font-medium">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                     <button
-                      onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      onClick={() => removeFromCart(item.productId)}
+                      className="p-1 hover:bg-red-100 text-red-600 rounded transition-colors"
                     >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="w-8 text-center font-medium">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <button
-                    onClick={() => removeFromCart(item.productId)}
-                    className="p-1 hover:bg-red-100 text-red-600 rounded transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
         {cart.length > 0 && (
           <div className="border-t p-6 space-y-4">
-            <div className="flex justify-between text-sm">
-              <span>Subtotal</span>
-              <span>Rp {subtotal.toLocaleString()}</span>
+            {/* Subscription Status Banner */}
+            {userSubscription?.isActive ? (
+              <div className="bg-gradient-to-r from-purple-500 to-teal-500 text-white p-4 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Crown className="w-5 h-5" />
+                  <span className="font-bold">Premium Member</span>
+                </div>
+                <p className="text-sm opacity-90">You're getting 20% discount on all items!</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Zap className="w-5 h-5 text-amber-600" />
+                  <span className="font-bold text-amber-800">Upgrade to Premium</span>
+                </div>
+                <p className="text-sm text-amber-700 mb-2">
+                  Get 20% discount on all purchases
+                </p>
+                <button
+                  onClick={handleUpgradeSubscription}
+                  className="w-full bg-amber-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors"
+                >
+                  Upgrade Now
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Subtotal</span>
+                <span>Rp {originalSubtotal.toLocaleString()}</span>
+              </div>
+              
+              {userSubscription?.isActive && subscriptionDiscount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Subscription Discount (20%)</span>
+                  <span>- Rp {subscriptionDiscount.toLocaleString()}</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between text-sm">
+                <span>Delivery</span>
+                <span>Rp {deliveryFee.toLocaleString()}</span>
+              </div>
+              
+              <div className="flex justify-between font-bold text-lg border-t pt-2">
+                <span>Total</span>
+                <span>Rp {total.toLocaleString()}</span>
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Delivery</span>
-              <span>Rp {deliveryFee.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span>Rp {total.toLocaleString()}</span>
-            </div>
-            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
-              <p className="text-sm text-amber-800 text-center">
+            
+            <div className="bg-teal-50 p-3 rounded-lg border border-teal-200">
+              <p className="text-sm text-teal-800 text-center">
                 Earn <strong>{pointsEarned} points</strong> from this purchase!
+                {userSubscription?.isActive && (
+                  <span className="block text-xs mt-1">+50% bonus for Premium members!</span>
+                )}
               </p>
             </div>
+            
             <button
               onClick={() => {
                 setIsCartOpen(false);
@@ -507,7 +648,7 @@ export default function Marketplace() {
     </div>
   );
 
-  // Checkout Modal Component
+  // Checkout Modal Component dengan Subscription Discount
   const CheckoutModal = () => (
     <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity ${
       isCheckoutOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -525,25 +666,70 @@ export default function Marketplace() {
               </button>
             </div>
 
+            {/* Subscription Status in Checkout */}
+            {userSubscription?.isActive ? (
+              <div className="bg-gradient-to-r from-purple-500 to-teal-500 text-white p-4 rounded-lg mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Crown className="w-5 h-5" />
+                    <span className="font-bold">Premium Member Active</span>
+                  </div>
+                  <span className="text-sm bg-white/20 px-2 py-1 rounded-full">
+                    20% OFF Applied
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-amber-800">Upgrade to Premium</p>
+                    <p className="text-sm text-amber-700">Get 20% discount on this order</p>
+                  </div>
+                  <button
+                    onClick={handleUpgradeSubscription}
+                    className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors"
+                  >
+                    Upgrade
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <h3 className="font-semibold text-gray-800 mb-3">Order Summary</h3>
               <div className="space-y-3">
-                {cart.map((item) => (
-                  <div key={item.productId} className="flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                      <img
-                        src={item.product?.image || '/api/placeholder/60/60'}
-                        alt={item.product?.name}
-                        className="w-12 h-12 object-cover rounded-lg"
-                      />
-                      <div>
-                        <p className="font-medium text-sm">{item.product?.name}</p>
-                        <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                {cart.map((item) => {
+                  const finalPrice = calculateProductPrice(item.product!);
+                  const hasDiscount = userSubscription?.isActive && finalPrice < item.product!.price;
+                  
+                  return (
+                    <div key={item.productId} className="flex justify-between items-center">
+                      <div className="flex items-center space-x-3">
+                        <img
+                          src={item.product?.image || '/api/placeholder/60/60'}
+                          alt={item.product?.name}
+                          className="w-12 h-12 object-cover rounded-lg"
+                        />
+                        <div>
+                          <p className="font-medium text-sm">{item.product?.name}</p>
+                          <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                          {hasDiscount && (
+                            <p className="text-xs text-green-600">Premium discount applied</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">Rp {(finalPrice * item.quantity).toLocaleString()}</p>
+                        {hasDiscount && (
+                          <p className="text-sm text-gray-500 line-through">
+                            Rp {((item.product?.price || 0) * item.quantity).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <p className="font-medium">Rp {((item.product?.price || 0) * item.quantity).toLocaleString()}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -578,19 +764,32 @@ export default function Marketplace() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>Rp {subtotal.toLocaleString()}</span>
+                  <span>Rp {originalSubtotal.toLocaleString()}</span>
                 </div>
+                
+                {userSubscription?.isActive && subscriptionDiscount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Subscription Discount (20%)</span>
+                    <span>- Rp {subscriptionDiscount.toLocaleString()}</span>
+                  </div>
+                )}
+                
                 <div className="flex justify-between">
                   <span>Delivery</span>
                   <span>Rp {deliveryFee.toLocaleString()}</span>
                 </div>
+                
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <span>Total</span>
                   <span>Rp {total.toLocaleString()}</span>
                 </div>
+                
                 <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                   <p className="text-sm text-green-800 text-center">
                     You will earn <strong>{pointsEarned} points</strong> from this purchase!
+                    {userSubscription?.isActive && (
+                      <span className="block text-xs mt-1">+50% bonus points for Premium members!</span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -633,6 +832,12 @@ export default function Marketplace() {
                   <span>Total Paid:</span>
                   <span>Rp {orderDetails?.total.toLocaleString()}</span>
                 </div>
+                {orderDetails?.subscriptionApplied && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Subscription Savings:</span>
+                    <span>- Rp {orderDetails?.subscriptionDiscount.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Points Earned:</span>
                   <span className="text-green-600 font-bold">+{orderDetails?.pointsEarned}</span>
@@ -667,22 +872,30 @@ export default function Marketplace() {
     </div>
   );
 
-  // Product Card Component
+  // Product Card Component dengan Subscription Price
   const ProductCard = ({ product, onAddToCart, onToggleWishlist }: any) => {
     const [isWishlisted, setIsWishlisted] = useState(false);
+    const finalPrice = calculateProductPrice(product);
+    const hasSubscriptionDiscount = userSubscription?.isActive && finalPrice < product.price;
+    const productDiscount = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
 
     const handleWishlist = () => {
       setIsWishlisted(!isWishlisted);
       onToggleWishlist(product.id);
     };
 
-    const discount = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
-
     return (
       <div className="group relative bg-white rounded-2xl p-4 shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100">
-        {discount > 0 && (
+        {productDiscount > 0 && (
           <div className="absolute top-4 left-4 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10">
-            -{discount}%
+            -{productDiscount}%
+          </div>
+        )}
+        
+        {hasSubscriptionDiscount && (
+          <div className="absolute top-4 left-20 bg-purple-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10 flex items-center space-x-1">
+            <Crown className="w-3 h-3" />
+            <span>-20%</span>
           </div>
         )}
         
@@ -732,12 +945,26 @@ export default function Marketplace() {
             </span>
           </div>
 
-          <div className="flex items-baseline space-x-2">
-            <span className="text-xl font-bold text-gray-800">Rp {product.price.toLocaleString()}</span>
+          <div className="space-y-1">
+            <div className="flex items-baseline space-x-2">
+              <span className="text-xl font-bold text-gray-800">Rp {finalPrice.toLocaleString()}</span>
+              {hasSubscriptionDiscount && (
+                <span className="text-sm text-gray-500 line-through">Rp {product.price.toLocaleString()}</span>
+              )}
+            </div>
             {product.originalPrice > product.price && (
               <span className="text-sm text-gray-500 line-through">Rp {product.originalPrice.toLocaleString()}</span>
             )}
           </div>
+
+          {hasSubscriptionDiscount && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+              <div className="flex items-center space-x-1 text-purple-700 text-xs">
+                <Crown className="w-3 h-3" />
+                <span className="font-semibold">Premium Discount Applied</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-sm text-gray-600">
             <span>{product.seller}</span>
@@ -788,7 +1015,7 @@ export default function Marketplace() {
       <CartSidebar />
       <CheckoutModal />
 
-      {/* Header Navigation */}
+      {/* Header Navigation dengan Subscription Status */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -811,6 +1038,22 @@ export default function Marketplace() {
             <div className="flex items-center space-x-4">
               {currentUser ? (
                 <>
+                  {/* Subscription Badge */}
+                  {userSubscription?.isActive ? (
+                    <div className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-3 py-1 rounded-full">
+                      <Crown className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Premium</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleUpgradeSubscription}
+                      className="flex items-center space-x-2 bg-amber-500 text-white px-3 py-1 rounded-full hover:bg-amber-600 transition-colors"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Upgrade</span>
+                    </button>
+                  )}
+                  
                   <button
                     onClick={handleProfile}
                     className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full transition-colors"
@@ -818,6 +1061,7 @@ export default function Marketplace() {
                     <User className="w-5 h-5" />
                     <span className="font-medium">Profile</span>
                   </button>
+                  
                   <button
                     onClick={() => setIsCartOpen(true)}
                     className="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"
@@ -851,7 +1095,7 @@ export default function Marketplace() {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Hero Section dengan Highlight Subscription */}
       <section className="relative py-20 bg-gradient-to-br from-teal-600 to-emerald-700 text-white overflow-hidden">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-teal-400/30 to-transparent"></div>
@@ -872,7 +1116,12 @@ export default function Marketplace() {
           </h1>
           
           <p className="text-xl md:text-2xl text-teal-100 max-w-3xl mx-auto mb-12 font-light leading-relaxed">
-            Discover unique upcycled treasures, secondhand gems, and sustainable products. Shop consciously, live sustainably.
+            Discover unique upcycled treasures, secondhand gems, and sustainable products. 
+            {userSubscription?.isActive ? (
+              <span className="font-semibold text-yellow-300"> Enjoy your 20% Premium discount!</span>
+            ) : (
+              <span> <span className="font-semibold text-yellow-300">Get 20% OFF</span> with Premium subscription!</span>
+            )}
           </p>
           
           <div className="max-w-2xl mx-auto mb-8">
@@ -905,6 +1154,15 @@ export default function Marketplace() {
             >
               Browse Products
             </button>
+            {!userSubscription?.isActive && (
+              <button 
+                onClick={handleUpgradeSubscription}
+                className="group bg-yellow-400 text-gray-800 px-8 py-4 rounded-full font-semibold hover:bg-yellow-300 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2"
+              >
+                <Crown className="w-5 h-5" />
+                <span>Get Premium</span>
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -948,6 +1206,9 @@ export default function Marketplace() {
               </h2>
               <p className="text-gray-600">
                 {filteredProducts.length} products found
+                {userSubscription?.isActive && (
+                  <span className="text-purple-600 font-semibold ml-2"> • Your 20% discount is applied!</span>
+                )}
               </p>
             </div>
             
@@ -992,7 +1253,7 @@ export default function Marketplace() {
         </div>
       </section>
 
-      {/* Benefits Section */}
+      {/* Benefits Section dengan Highlight Subscription Benefits */}
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <div className="mb-16">
@@ -1003,6 +1264,12 @@ export default function Marketplace() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
+                icon: <Crown className="w-12 h-12" />,
+                title: 'Premium Benefits',
+                description: 'Get 20% discount on all purchases + 50% bonus points with Premium subscription',
+                highlight: true
+              },
+              {
                 icon: <Leaf className="w-12 h-12" />,
                 title: 'Reduce Waste',
                 description: 'Give pre-loved items a new life and keep them out of landfills'
@@ -1011,19 +1278,30 @@ export default function Marketplace() {
                 icon: <Recycle className="w-12 h-12" />,
                 title: 'Support Circular Economy',
                 description: 'Promote sustainable consumption and production patterns'
-              },
-              {
-                icon: <Shield className="w-12 h-12" />,
-                title: 'Quality Verified',
-                description: 'All products are checked for quality and sustainability'
               }
             ].map((benefit, index) => (
-              <div key={index} className="text-center">
-                <div className="p-4 bg-teal-100 text-teal-600 rounded-2xl w-fit mx-auto mb-6">
+              <div key={index} className={`text-center p-6 rounded-2xl transition-all duration-300 ${
+                benefit.highlight 
+                  ? 'bg-gradient-to-br from-purple-50 to-teal-50 border-2 border-purple-200 transform hover:-translate-y-2 shadow-lg' 
+                  : 'hover:shadow-md'
+              }`}>
+                <div className={`p-4 rounded-2xl w-fit mx-auto mb-6 ${
+                  benefit.highlight 
+                    ? 'bg-gradient-to-r from-purple-500 to-teal-500 text-white' 
+                    : 'bg-teal-100 text-teal-600'
+                }`}>
                   {benefit.icon}
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 mb-4">{benefit.title}</h3>
                 <p className="text-gray-600 leading-relaxed">{benefit.description}</p>
+                {benefit.highlight && !userSubscription?.isActive && (
+                  <button
+                    onClick={handleUpgradeSubscription}
+                    className="mt-4 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-6 py-2 rounded-full font-semibold hover:from-purple-600 hover:to-teal-600 transition-all transform hover:scale-105"
+                  >
+                    Upgrade Now
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -1,41 +1,117 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Leaf, LeafyGreen } from 'lucide-react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Leaf, LeafyGreen, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { useAuth } from '../../context/AuthContext';
 import { auth } from '@/firebase/config';
 
-// Update the import path below to the correct relative path if your firebase file is at 'lib/firebase.ts'
-
 export default function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const searchParams = useSearchParams();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // Check for registration success message
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message === 'registered') {
+      setSuccess('Akun berhasil dibuat! Silakan login dengan email dan password Anda.');
+    }
+
+    // Check for stored credentials
+    const savedEmail = localStorage.getItem('rememberedEmail');
+    if (savedEmail) {
+      setFormData(prev => ({ ...prev, email: savedEmail }));
+      setRememberMe(true);
+    }
+  }, [searchParams]);
+
+  // Clear messages when form data changes
+  useEffect(() => {
+    if (error) setError('');
+  }, [formData]);
+
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateForm = () => {
+    if (!formData.email || !formData.password) {
+      return 'Email dan password harus diisi.';
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      return 'Format email tidak valid.';
+    }
+
+    return null;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
+    setSuccess('');
 
-    // Basic validation
-    if (!email || !password) {
-      setError('Email dan password harus diisi.');
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
       setIsSubmitting(false);
       return;
     }
 
+    // Handle remember me functionality
+    if (rememberMe) {
+      localStorage.setItem('rememberedEmail', formData.email);
+    } else {
+      localStorage.removeItem('rememberedEmail');
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Redirect langsung ke dashboard
-      router.push('/dashboard');
+      await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      
+      // Show success message before redirect
+      setSuccess('Login berhasil! Mengarahkan ke dashboard...');
+      
+      // Redirect to dashboard after short delay
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 1000);
+
     } catch (err) {
       setError(getFirebaseErrorMessage(err));
       setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!formData.email) {
+      setError('Silakan masukkan email Anda untuk reset password.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Format email tidak valid.');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, formData.email);
+      setSuccess(`Email reset password telah dikirim ke ${formData.email}. Silakan periksa inbox Anda.`);
+    } catch (err) {
+      setError(getFirebaseErrorMessage(err));
     }
   };
 
@@ -52,22 +128,28 @@ export default function LoginForm() {
       case 'auth/user-not-found': return 'Tidak ada akun dengan email ini.';
       case 'auth/wrong-password': return 'Password salah. Silakan coba lagi.';
       case 'auth/network-request-failed': return 'Kesalahan jaringan. Periksa koneksi internet Anda.';
+      case 'auth/too-many-requests': return 'Terlalu banyak percobaan login. Silakan coba lagi nanti.';
+      case 'auth/invalid-credential': return 'Email atau password salah.';
+      case 'auth/user-mismatch': return 'Kredensial tidak cocok dengan pengguna.';
+      case 'auth/requires-recent-login': return 'Sesi login telah kedaluwarsa. Silakan login ulang.';
       default: return firebaseError.message || 'Login gagal. Silakan coba lagi.';
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-emerald-100/50">
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-8 text-center relative overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border border-emerald-100/50 backdrop-blur-sm bg-white/95">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 p-8 text-center relative overflow-hidden">
             <div className="absolute -top-10 -left-10 w-24 h-24 rounded-full bg-teal-400/20"></div>
             <div className="absolute -bottom-8 -right-8 w-32 h-32 rounded-full bg-emerald-400/20"></div>
+            <div className="absolute top-4 right-4 w-16 h-16 rounded-full bg-cyan-400/20"></div>
             
             <motion.div
               animate={{ 
@@ -83,33 +165,60 @@ export default function LoginForm() {
             >
               <LeafyGreen className="w-14 h-14 text-white mx-auto" strokeWidth={1.5} />
             </motion.div>
-            <h2 className="text-3xl font-bold text-white mt-6 relative z-10">
-              ECO-MANAGE
-            </h2>
-            <p className="text-emerald-100 mt-2 relative z-10">
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="text-3xl font-bold text-white mt-6 relative z-10"
+            >
+              EcoManage
+            </motion.h2>
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="text-emerald-100 mt-2 relative z-10"
+            >
               Selamat datang kembali
-            </p>
+            </motion.p>
           </div>
 
+          {/* Form */}
           <form onSubmit={handleLogin} className="p-8 space-y-6">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-4 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-start"
-              >
-                <div className="flex-shrink-0">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p>{error}</p>
-                </div>
-              </motion.div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -10, height: 0 }}
+                  className="p-4 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-start"
+                >
+                  <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div className="ml-3">
+                    <p className="font-medium">Login Gagal</p>
+                    <p>{error}</p>
+                  </div>
+                </motion.div>
+              )}
 
-            <div className="space-y-1">
+              {success && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -10, height: 0 }}
+                  className="p-4 bg-green-50 text-green-600 rounded-lg text-sm border border-green-100 flex items-start"
+                >
+                  <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div className="ml-3">
+                    <p className="font-medium">Berhasil!</p>
+                    <p>{success}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Email Field */}
+            <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email
               </label>
@@ -117,10 +226,10 @@ export default function LoginForm() {
                 <input
                   type="email"
                   id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
                   placeholder="email@anda.com"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-700 placeholder-gray-400"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-700 placeholder-gray-400 bg-white"
                   required
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -131,47 +240,64 @@ export default function LoginForm() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
+            {/* Password Field */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+              </div>
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={(e) => handleChange('password', e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-700 placeholder-gray-400"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition text-gray-700 placeholder-gray-400 bg-white"
                   required
                 />
-                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 transition"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-end">
+            {/* Remember Me & Forgot Password */}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-600">Ingat saya</span>
+              </label>
+
               <motion.button
                 type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => router.push('/reset-password')}
-                className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
+                onClick={handleForgotPassword}
+                className="text-sm text-emerald-600 hover:text-emerald-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded"
               >
                 Lupa password?
               </motion.button>
             </div>
 
+            {/* Login Button */}
             <motion.button
               type="submit"
               whileHover={{ 
-                scale: 1.02,
-                boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)"
+                scale: isSubmitting ? 1 : 1.02,
+                boxShadow: isSubmitting ? "none" : "0 4px 12px rgba(16, 185, 129, 0.2)"
               }}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: isSubmitting ? 1 : 0.98 }}
               disabled={isSubmitting}
               className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-all ${
                 isSubmitting ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
@@ -208,14 +334,15 @@ export default function LoginForm() {
             </motion.button>
           </form>
 
+          {/* Footer */}
           <div className="px-8 pb-8 text-center bg-gray-50 border-t border-gray-100">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 mb-4">
               Belum punya akun?{' '}
               <motion.button
                 onClick={() => router.push('/register')}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="text-emerald-600 hover:text-emerald-800 font-medium inline-flex items-center"
+                className="text-emerald-600 hover:text-emerald-800 font-medium inline-flex items-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded"
               >
                 Daftar di sini
                 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,8 +350,30 @@ export default function LoginForm() {
                 </svg>
               </motion.button>
             </p>
+            
+            {/* Security Notice */}
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs text-blue-600">
+                <strong>Keamanan:</strong> Kami peduli dengan keamanan data Anda. Semua informasi dienkripsi dan disimpan dengan aman.
+              </p>
+            </div>
           </div>
         </div>
+
+        {/* Additional Info */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-6 text-center"
+        >
+          <p className="text-sm text-gray-500">
+            Butuh bantuan?{' '}
+            <button className="text-emerald-600 hover:text-emerald-800 font-medium">
+              Hubungi support
+            </button>
+          </p>
+        </motion.div>
       </motion.div>
     </div>
   );

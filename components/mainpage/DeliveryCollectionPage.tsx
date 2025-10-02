@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, serverTimestamp, updateDoc, doc, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, increment, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/firebase/config'
 import { useAuthState } from 'react-firebase-hooks/auth';
 
@@ -33,6 +33,11 @@ const EcoCollectScheduler = () => {
 
   // Points system
   const [pointsEarned, setPointsEarned] = useState(0);
+
+  // Subscription state
+  const [userSubscription, setUserSubscription] = useState<any>(null);
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+  const isPremiumMember = userSubscription?.isActive && userSubscription.tier === 'pro';
 
   const timeSlots = [
     "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
@@ -109,6 +114,29 @@ const EcoCollectScheduler = () => {
   // Tarif per km
   const distanceRate = 2000; // Rp 2.000 per km
 
+  // Load user subscription data
+  useEffect(() => {
+    const loadUserSubscription = async () => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserSubscription(userData.subscription || null);
+          }
+        } catch (error) {
+          console.error('Error loading subscription:', error);
+        } finally {
+          setIsLoadingSubscription(false);
+        }
+      } else {
+        setIsLoadingSubscription(false);
+      }
+    };
+
+    loadUserSubscription();
+  }, [user]);
+
   useEffect(() => {
     const checkFormCompletion = () => {
       if (currentStep === 1) return !!selectedDate && !!selectedTime;
@@ -126,16 +154,22 @@ const EcoCollectScheduler = () => {
     setFormComplete(checkFormCompletion());
   }, [currentStep, selectedDate, selectedTime, recyclingType, bagsCount, address, email, phone, distance, paymentMethod, cardNumber, expiryDate, cvv, cardholderName]);
 
-  // Calculate points when recycling type or bags count changes
+  // Calculate points when recycling type or bags count changes - UPDATED untuk premium members
   useEffect(() => {
     if (recyclingType && bagsCount > 0) {
       const selectedType = recyclingTypes.find(type => type.id === recyclingType);
       if (selectedType) {
-        const points = selectedType.pointsPerKg * bagsCount;
+        let points = selectedType.pointsPerKg * bagsCount;
+        
+        // Premium members get 50% bonus points
+        if (isPremiumMember) {
+          points = Math.floor(points * 1.5);
+        }
+        
         setPointsEarned(points);
       }
     }
-  }, [recyclingType, bagsCount]);
+  }, [recyclingType, bagsCount, isPremiumMember]);
 
   // Fungsi untuk menghitung jarak (simulasi)
   const calculateDistance = async () => {
@@ -153,21 +187,28 @@ const EcoCollectScheduler = () => {
     setIsCalculatingDistance(false);
   };
 
-  // Fungsi untuk menghitung total biaya
+  // Fungsi untuk menghitung total biaya - UPDATED untuk premium discount
   const calculateTotalCost = () => {
     if (!distance) return 0;
     
     const selectedType = recyclingTypes.find(type => type.id === recyclingType);
     if (!selectedType) return 0;
     
-    const baseCost = selectedType.basePrice * bagsCount;
-    const distanceCost = distance * distanceRate;
+    let baseCost = selectedType.basePrice * bagsCount;
+    let distanceCost = distance * distanceRate;
+    
+    // Apply 20% discount for premium members
+    if (isPremiumMember) {
+      baseCost = baseCost * 0.8;
+      distanceCost = distanceCost * 0.8;
+    }
+    
     const totalCost = baseCost + distanceCost;
     
-    return totalCost;
+    return Math.floor(totalCost);
   };
 
-  // Fungsi untuk menambahkan points ke user profile
+  // Fungsi untuk menambahkan points ke user profile - UPDATED untuk premium bonus
   const addPointsToUser = async (userId: string, points: number) => {
     try {
       const userRef = doc(db, 'users', userId);
@@ -198,12 +239,13 @@ const EcoCollectScheduler = () => {
     }
   };
 
-  // Fungsi untuk menyimpan data ke Firebase
+  // Fungsi untuk menyimpan data ke Firebase - UPDATED untuk subscription info
   const saveToFirebase = async () => {
     if (!user || !selectedDate) return null;
 
     const selectedType = recyclingTypes.find(t => t.id === recyclingType);
-    const totalPoints = selectedType ? selectedType.pointsPerKg * bagsCount : 0;
+    const totalPoints = pointsEarned;
+    const totalCost = calculateTotalCost();
 
     const collectionData = {
       userId: user.uid,
@@ -220,9 +262,12 @@ const EcoCollectScheduler = () => {
       bagsCount: bagsCount,
       weight: bagsCount, // Assuming 1 bag = 1 kg
       distance: distance,
-      totalCost: calculateTotalCost(),
+      totalCost: totalCost,
+      originalCost: calculateOriginalCost(), // Store original cost before discount
+      discountApplied: isPremiumMember ? 20 : 0, // Store discount percentage
       paymentMethod: paymentMethod,
       pointsEarned: totalPoints,
+      subscriptionApplied: isPremiumMember,
       status: 'scheduled',
       statusLabel: 'Scheduled',
       collector: null,
@@ -244,7 +289,8 @@ const EcoCollectScheduler = () => {
         title: "Recycling Pickup Scheduled",
         description: `Scheduled ${bagsCount}kg ${selectedType?.label} pickup for ${selectedDate.toLocaleDateString()}`,
         date: new Date().toISOString().split('T')[0],
-        points: totalPoints
+        points: totalPoints,
+        subscriptionBonus: isPremiumMember
       });
 
       return docRef.id;
@@ -252,6 +298,28 @@ const EcoCollectScheduler = () => {
       console.error('Error saving to Firebase:', error);
       return null;
     }
+  };
+
+  // Calculate original cost without discount
+  const calculateOriginalCost = () => {
+    if (!distance) return 0;
+    
+    const selectedType = recyclingTypes.find(type => type.id === recyclingType);
+    if (!selectedType) return 0;
+    
+    const baseCost = selectedType.basePrice * bagsCount;
+    const distanceCost = distance * distanceRate;
+    const totalCost = baseCost + distanceCost;
+    
+    return totalCost;
+  };
+
+  // Calculate savings for premium members
+  const calculateSavings = () => {
+    if (!isPremiumMember) return 0;
+    const originalCost = calculateOriginalCost();
+    const discountedCost = calculateTotalCost();
+    return originalCost - discountedCost;
   };
 
   const getDaysInMonth = (month: number, year: number) => {
@@ -419,10 +487,51 @@ const EcoCollectScheduler = () => {
   const selectedRecyclingBasePrice = recyclingTypes.find(t => t.id === recyclingType)?.basePrice || 0;
   const selectedRecyclingPointsPerKg = recyclingTypes.find(t => t.id === recyclingType)?.pointsPerKg || 0;
   const totalCost = calculateTotalCost();
+  const originalCost = calculateOriginalCost();
+  const savings = calculateSavings();
+
+  // Premium Member Badge Component
+  const PremiumBadge = () => (
+    <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center space-x-2 mb-4">
+      <span>👑</span>
+      <span>Premium Member - 20% Discount Applied!</span>
+    </div>
+  );
+
+  // Upgrade CTA Component
+  const UpgradeCTA = () => (
+    <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-4 mb-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-2 rounded-lg">
+            <span className="text-white text-lg">👑</span>
+          </div>
+          <div>
+            <h4 className="font-bold text-purple-800">Upgrade to Premium</h4>
+            <p className="text-purple-600 text-sm">Get 20% discount on all pickups!</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.open('/subscription', '_blank')}
+          className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-purple-600 hover:to-pink-600 transition-all transform hover:scale-105"
+        >
+          Upgrade
+        </button>
+      </div>
+    </div>
+  );
 
   const renderReviewSummary = () => (
     <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border-2 border-emerald-100 shadow-lg max-w-xl mx-auto">
       <h3 className="text-xl font-bold text-emerald-800 mb-6 text-center">Review Your Pickup Details</h3>
+      
+      {/* Premium Badge atau Upgrade CTA */}
+      {isPremiumMember ? (
+        <PremiumBadge />
+      ) : (
+        <UpgradeCTA />
+      )}
       
       <div className="space-y-4 text-left px-4">
         <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
@@ -462,20 +571,40 @@ const EcoCollectScheduler = () => {
               {formatCurrency(distance ? distance * distanceRate : 0)}
             </span>
           </div>
+          
+          {/* Discount Display for Premium Members */}
+          {isPremiumMember && (
+            <div className="flex justify-between items-center mb-1 bg-gradient-to-r from-purple-50 to-pink-50 p-2 rounded-lg">
+              <span className="text-purple-600 font-medium">Premium Discount (20%):</span>
+              <span className="font-bold text-purple-600">
+                -{formatCurrency(savings)}
+              </span>
+            </div>
+          )}
+          
           <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
             <span className="text-emerald-700 font-bold">Total Cost:</span>
             <span className="font-bold text-lg text-emerald-800">
               {formatCurrency(totalCost)}
             </span>
           </div>
+          
+          {/* Original Price for Premium Members */}
+          {isPremiumMember && (
+            <div className="flex justify-between items-center text-sm text-purple-600 mt-1">
+              <span>Original Price:</span>
+              <span className="line-through">{formatCurrency(originalCost)}</span>
+            </div>
+          )}
         </div>
-        {/* Points Section */}
+        {/* Points Section - UPDATED untuk premium bonus */}
         <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-4 rounded-xl border border-amber-200">
           <div className="flex justify-between items-center">
             <div>
               <span className="text-amber-700 font-bold">Points You'll Earn:</span>
               <p className="text-sm text-amber-600">
                 {bagsCount}kg × {selectedRecyclingPointsPerKg} points/kg
+                {isPremiumMember && " + 50% Premium Bonus"}
               </p>
             </div>
             <span className="text-2xl font-bold text-amber-700">
@@ -507,6 +636,13 @@ const EcoCollectScheduler = () => {
     <div className="max-w-2xl mx-auto">
       <div className="bg-gradient-to-br from-emerald-50 to-white p-8 rounded-2xl border-2 border-emerald-100 shadow-lg">
         <h3 className="text-xl font-bold text-emerald-800 mb-6">Payment Information</h3>
+        
+        {/* Premium Badge atau Upgrade CTA */}
+        {isPremiumMember ? (
+          <PremiumBadge />
+        ) : (
+          <UpgradeCTA />
+        )}
         
         <div className="space-y-6">
           <div>
@@ -596,18 +732,26 @@ const EcoCollectScheduler = () => {
               <span className="font-medium">Total Amount:</span>
               <span className="text-2xl font-bold">{formatCurrency(totalCost)}</span>
             </div>
+            {isPremiumMember && (
+              <div className="flex justify-between items-center text-emerald-100 text-sm">
+                <span>You saved:</span>
+                <span className="font-bold">{formatCurrency(savings)}</span>
+              </div>
+            )}
             <p className="text-emerald-100 text-sm">
               Includes base recycling cost and distance-based delivery fee
+              {isPremiumMember && " (20% discount applied)"}
             </p>
           </div>
 
-          {/* Points Preview in Payment Step */}
+          {/* Points Preview in Payment Step - UPDATED untuk premium bonus */}
           <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 rounded-2xl text-white">
             <div className="flex justify-between items-center">
               <div>
                 <span className="font-bold text-lg">Points You'll Earn</span>
                 <p className="text-amber-100 text-sm">
                   {bagsCount}kg {selectedRecyclingLabel} × {selectedRecyclingPointsPerKg} points/kg
+                  {isPremiumMember && " + 50% Premium Bonus"}
                 </p>
               </div>
               <span className="text-3xl font-bold">+{pointsEarned}</span>
@@ -706,18 +850,38 @@ const EcoCollectScheduler = () => {
                     We've sent confirmation details to your email.
                   </p>
 
-                  {/* Points Earned Celebration */}
+                  {/* Points Earned Celebration - UPDATED untuk premium bonus */}
                   <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 rounded-2xl text-white max-w-md mx-auto mb-8 shadow-lg">
                     <div className="text-center">
                       <div className="text-4xl mb-2">🎉</div>
                       <h4 className="text-2xl font-bold mb-2">Congratulations!</h4>
                       <p className="text-lg mb-2">You've earned</p>
                       <div className="text-4xl font-bold mb-2">+{pointsEarned} Points</div>
+                      {isPremiumMember && (
+                        <p className="text-amber-100 text-sm mb-2">
+                          Includes 50% Premium bonus!
+                        </p>
+                      )}
                       <p className="text-amber-100">
                         Your points will be added to your profile after pickup completion
                       </p>
                     </div>
                   </div>
+                  
+                  {/* Savings Celebration for Premium Members */}
+                  {isPremiumMember && (
+                    <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-6 rounded-2xl text-white max-w-md mx-auto mb-8 shadow-lg">
+                      <div className="text-center">
+                        <div className="text-4xl mb-2">💰</div>
+                        <h4 className="text-2xl font-bold mb-2">Premium Savings!</h4>
+                        <p className="text-lg mb-2">You saved</p>
+                        <div className="text-4xl font-bold mb-2">{formatCurrency(savings)}</div>
+                        <p className="text-purple-100">
+                          Thank you for being a Premium member!
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl shadow-inner border border-emerald-100 max-w-md mx-auto mb-8">
                     <div className="space-y-4 text-left">
@@ -755,6 +919,14 @@ const EcoCollectScheduler = () => {
                           {formatCurrency(totalCost)}
                         </span>
                       </div>
+                      {isPremiumMember && (
+                        <div className="flex justify-between items-center border-b border-emerald-100 pb-3 bg-gradient-to-r from-purple-50 to-pink-50 p-2 rounded">
+                          <span className="text-purple-600 font-medium">Premium Savings:</span>
+                          <span className="font-bold text-purple-600">
+                            -{formatCurrency(savings)}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
                         <span className="text-emerald-600 font-medium">Points Earned:</span>
                         <span className="font-bold text-amber-600">
@@ -850,6 +1022,13 @@ const EcoCollectScheduler = () => {
                       <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border-2 border-emerald-100 shadow-lg">
                         <h3 className="text-xl font-bold text-emerald-800 mb-6">Your Pickup Summary</h3>
                         
+                        {/* Premium Badge atau Upgrade CTA */}
+                        {isPremiumMember ? (
+                          <PremiumBadge />
+                        ) : (
+                          <UpgradeCTA />
+                        )}
+                        
                         <div className="bg-white p-6 rounded-xl border border-emerald-100 text-center">
                           <div className="text-5xl mb-4">📅</div>
                           {formattedDate ? (
@@ -929,14 +1108,16 @@ const EcoCollectScheduler = () => {
                             {bagsCount} {bagsCount === 1 ? "kg" : "kgs"}
                           </p>
                           
-                          {/* Points Preview */}
+                          {/* Points Preview - UPDATED untuk premium bonus */}
                           {pointsEarned > 0 && (
                             <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
                               <p className="text-amber-800 font-medium">
                                 You'll earn <span className="font-bold">+{pointsEarned} points</span>
+                                {isPremiumMember && " (includes 50% bonus)"}
                               </p>
                               <p className="text-xs text-amber-600">
                                 {bagsCount}kg × {selectedRecyclingPointsPerKg} points/kg
+                                {isPremiumMember && " × 1.5 Premium bonus"}
                               </p>
                             </div>
                           )}
@@ -945,6 +1126,14 @@ const EcoCollectScheduler = () => {
 
                       <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border-2 border-emerald-100 shadow-lg">
                         <h3 className="text-xl font-bold text-emerald-800 mb-6">Recycling Summary</h3>
+                        
+                        {/* Premium Badge atau Upgrade CTA */}
+                        {isPremiumMember ? (
+                          <PremiumBadge />
+                        ) : (
+                          <UpgradeCTA />
+                        )}
+                        
                         <div className="bg-white p-6 rounded-xl border border-emerald-100">
                           <div className="flex items-center space-x-4 mb-4">
                             <span className="text-3xl">
@@ -962,6 +1151,7 @@ const EcoCollectScheduler = () => {
                               </p>
                               <p className="text-sm text-amber-600 font-medium mt-1">
                                 Points: {selectedRecyclingPointsPerKg} per kg
+                                {isPremiumMember && " + 50% bonus"}
                               </p>
                             </div>
                           </div>
@@ -974,13 +1164,13 @@ const EcoCollectScheduler = () => {
                             </div>
                           )}
                           
-                          {/* Points Summary */}
+                          {/* Points Summary - UPDATED untuk premium bonus */}
                           {pointsEarned > 0 && (
                             <div className="border-t border-emerald-100 pt-4 mt-4">
                               <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-3 rounded-lg text-white text-center">
                                 <p className="font-bold text-lg">+{pointsEarned} Points</p>
                                 <p className="text-amber-100 text-sm">
-                                  Will be added to your profile
+                                  {isPremiumMember ? "Includes 50% Premium bonus!" : "Will be added to your profile"}
                                 </p>
                               </div>
                             </div>
@@ -994,6 +1184,13 @@ const EcoCollectScheduler = () => {
                     <div className="max-w-2xl mx-auto">
                       <div className="bg-gradient-to-br from-emerald-50 to-white p-8 rounded-2xl border-2 border-emerald-100 shadow-lg">
                         <h3 className="text-xl font-bold text-emerald-800 mb-6">Contact Information</h3>
+                        
+                        {/* Premium Badge atau Upgrade CTA */}
+                        {isPremiumMember ? (
+                          <PremiumBadge />
+                        ) : (
+                          <UpgradeCTA />
+                        )}
                         
                         <div className="space-y-6">
                           <div>
