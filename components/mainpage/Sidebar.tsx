@@ -13,7 +13,8 @@ import {
   Sparkles, 
   ChevronRight,
   Crown,
-  Store
+  Store,
+  Check
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -25,15 +26,23 @@ interface NavLink {
   path: string;
   icon: React.ReactNode;
   badge?: string;
+  showBadge?: (userSubscription: any) => boolean; // Function to determine if badge should be shown
 }
 
-const navLinks: NavLink[] = [
+// Define nav links with conditional badge display
+const getNavLinks = (userSubscription: any): NavLink[] => [
   { name: 'Dashboard', path: '/dashboard', icon: <Gauge className="w-5 h-5" /> },
   { name: 'Marketplace', path: '/marketplace', icon: <Store className="w-5 h-5" />, badge: 'New' },
   { name: 'Recycling Centers', path: '/recycling-centers', icon: <Recycle className="w-5 h-5" /> },
   { name: 'Waste Tracking', path: '/waste-tracking', icon: <MapPin className="w-5 h-5" /> },
   { name: 'Collection', path: '/delivery-collection', icon: <Truck className="w-5 h-5" /> },
-  { name: 'Subscription', path: '/subscription', icon: <Crown className="w-5 h-5" />, badge: 'Upgrade' },
+  { 
+    name: 'Subscription', 
+    path: '/subscription', 
+    icon: <Crown className="w-5 h-5" />, 
+    badge: userSubscription?.tier === 'pro' ? 'Pro' : 'Upgrade',
+    showBadge: (userSub) => !userSub?.isActive || userSub?.tier !== 'pro' // Show badge only if not Pro
+  },
   { name: 'Profile & Rewards', path: '/profile-reward', icon: <UserCircle2 className="w-5 h-5" /> },
   { name: 'About', path: '/about', icon: <Info className="w-5 h-5" /> },
 ]
@@ -43,6 +52,7 @@ export default function Sidebar() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userPoints, setUserPoints] = useState(0);
+  const [userSubscription, setUserSubscription] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
   // Listen to auth state and user data
@@ -50,9 +60,10 @@ export default function Sidebar() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        await loadUserPoints(user.uid);
+        await loadUserData(user.uid);
       } else {
         setUserPoints(0);
+        setUserSubscription(null);
         setLoading(false);
       }
     });
@@ -60,23 +71,26 @@ export default function Sidebar() {
     return () => unsubscribe();
   }, []);
 
-  // Load user points from Firestore
-  const loadUserPoints = async (userId: string) => {
+  // Load user data from Firestore
+  const loadUserData = async (userId: string) => {
     try {
       const unsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
         if (doc.exists()) {
           const userData = doc.data();
           setUserPoints(userData.points || 0);
+          setUserSubscription(userData.subscription || null);
         } else {
           setUserPoints(0);
+          setUserSubscription(null);
         }
         setLoading(false);
       });
 
       return unsubscribe;
     } catch (error) {
-      console.error('Error loading user points:', error);
+      console.error('Error loading user data:', error);
       setUserPoints(0);
+      setUserSubscription(null);
       setLoading(false);
     }
   };
@@ -152,6 +166,9 @@ export default function Sidebar() {
     return pathname.startsWith(linkPath);
   };
 
+  // Get nav links based on user subscription status
+  const navLinks = getNavLinks(userSubscription);
+
   return (
     <motion.aside
       initial="hidden"
@@ -200,7 +217,7 @@ export default function Sidebar() {
         </div>
       </motion.div>
       
-      {/* Enhanced Points Display - FIXED VERSION */}
+      {/* Enhanced Points Display */}
       <Link href="/profile-reward" className="block mb-6">
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.9 }}
@@ -255,7 +272,6 @@ export default function Sidebar() {
                 <span className="text-sm text-emerald-700 font-semibold">Eco Points</span>
                 <Sparkles className="w-3 h-3 text-emerald-500" />
               </div>
-              {/* FIX: Menggunakan div bukan p untuk menghindari nesting issues */}
               <div className="text-2xl font-bold text-emerald-800 min-h-[32px] flex items-center">
                 {loading ? (
                   <div className="h-6 bg-emerald-200 rounded animate-pulse w-16"></div>
@@ -288,6 +304,8 @@ export default function Sidebar() {
         <AnimatePresence>
           {navLinks.map((link, i) => {
             const isActive = isActiveLink(link.path);
+            // Check if badge should be shown based on user subscription
+            const shouldShowBadge = link.showBadge ? link.showBadge(userSubscription) : !!link.badge;
             
             return (
               <motion.div
@@ -335,12 +353,14 @@ export default function Sidebar() {
                   </motion.span>
                   <span className="text-sm relative z-10 font-medium flex-1">{link.name}</span>
                   
-                  {/* Badge for special items */}
-                  {link.badge && (
+                  {/* Badge for special items - Conditionally rendered */}
+                  {shouldShowBadge && link.badge && (
                     <motion.span
                       className={`px-2 py-1 rounded-full text-xs font-bold relative z-10 ${
                         link.path === '/subscription'
-                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
+                          ? userSubscription?.tier === 'pro'
+                            ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-white flex items-center gap-1'
+                            : 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
                           : link.path === '/marketplace'
                           ? 'bg-gradient-to-r from-purple-400 to-pink-500 text-white'
                           : 'bg-emerald-500 text-white'
@@ -350,6 +370,9 @@ export default function Sidebar() {
                       transition={{ delay: 0.5 + i * 0.1, type: "spring" as const }}
                       whileHover={{ scale: 1.1 }}
                     >
+                      {userSubscription?.tier === 'pro' && link.path === '/subscription' && (
+                        <Check className="w-3 h-3" />
+                      )}
                       {link.badge}
                     </motion.span>
                   )}
@@ -381,6 +404,22 @@ export default function Sidebar() {
           })}
         </AnimatePresence>
       </nav>
+      
+      {/* User Subscription Status Display */}
+      {userSubscription?.tier === 'pro' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7, duration: 0.6 }}
+          className="mb-4 p-3 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200/50 rounded-xl"
+        >
+          <div className="flex items-center justify-center space-x-2">
+            <Crown className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-semibold text-emerald-700">Pro Member</span>
+            <Check className="w-3 h-3 text-emerald-600" />
+          </div>
+        </motion.div>
+      )}
       
       {/* Bottom divider */}
       <div className="relative my-4">

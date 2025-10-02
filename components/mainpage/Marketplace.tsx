@@ -1015,85 +1015,22 @@ export default function Marketplace() {
       <CartSidebar />
       <CheckoutModal />
 
-      {/* Header Navigation dengan Subscription Status */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-8">
-              <div 
-                className="flex items-center space-x-2 cursor-pointer"
-                onClick={() => router.push('/')}
-              >
-                <Recycle className="w-8 h-8 text-teal-600" />
-                <span className="text-xl font-bold text-gray-800">EcoMarket</span>
-              </div>
-              
-              <nav className="hidden md:flex items-center space-x-6">
-                <button className="text-gray-700 hover:text-teal-600 font-medium">Categories</button>
-                <button className="text-gray-700 hover:text-teal-600 font-medium">Deals</button>
-                <button className="text-gray-700 hover:text-teal-600 font-medium">What's New</button>
-              </nav>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {currentUser ? (
-                <>
-                  {/* Subscription Badge */}
-                  {userSubscription?.isActive ? (
-                    <div className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-3 py-1 rounded-full">
-                      <Crown className="w-4 h-4" />
-                      <span className="text-sm font-semibold">Premium</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleUpgradeSubscription}
-                      className="flex items-center space-x-2 bg-amber-500 text-white px-3 py-1 rounded-full hover:bg-amber-600 transition-colors"
-                    >
-                      <Zap className="w-4 h-4" />
-                      <span className="text-sm font-semibold">Upgrade</span>
-                    </button>
-                  )}
-                  
-                  <button
-                    onClick={handleProfile}
-                    className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full transition-colors"
-                  >
-                    <User className="w-5 h-5" />
-                    <span className="font-medium">Profile</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => setIsCartOpen(true)}
-                    className="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"
-                  >
-                    <ShoppingCart className="w-6 h-6" />
-                    {cart.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
-                        {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                      </span>
-                    )}
-                  </button>
-                </>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={() => router.push('/login')}
-                    className="text-gray-700 hover:text-teal-600 font-medium"
-                  >
-                    Login
-                  </button>
-                  <button
-                    onClick={() => router.push('/signup')}
-                    className="bg-teal-600 text-white px-6 py-2 rounded-full font-medium hover:bg-teal-700 transition-colors"
-                  >
-                    Sign Up
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Floating Cart Button - Hanya ini yang tersisa dari navbar */}
+      <div className="fixed top-6 right-6 z-40">
+        {currentUser && (
+          <button
+            onClick={() => setIsCartOpen(true)}
+            className="relative bg-teal-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:bg-teal-700"
+          >
+            <ShoppingCart className="w-6 h-6" />
+            {cart.length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold animate-pulse">
+                {cart.reduce((sum, item) => sum + item.quantity, 0)}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       {/* Hero Section dengan Highlight Subscription */}
       <section className="relative py-20 bg-gradient-to-br from-teal-600 to-emerald-700 text-white overflow-hidden">
