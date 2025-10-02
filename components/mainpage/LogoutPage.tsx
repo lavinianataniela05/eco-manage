@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +14,7 @@ const LogoutPage: React.FC = () => {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
 
   useEffect(() => {
     if (!isClient) return;
