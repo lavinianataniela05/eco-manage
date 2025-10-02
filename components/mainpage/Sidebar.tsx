@@ -15,6 +15,10 @@ import {
   Crown,
   Store
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { doc, onSnapshot } from 'firebase/firestore'
+import { db, auth } from '@/firebase/config'
+import { onAuthStateChanged, User } from 'firebase/auth'
 
 interface NavLink {
   name: string;
@@ -37,13 +41,56 @@ const navLinks: NavLink[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userPoints, setUserPoints] = useState(0);
+  const [loading, setLoading] = useState(true);
   
-  const handleLogout = () => {
-    // Add logout logic here
-    router.push('/logout');
+  // Listen to auth state and user data
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        await loadUserPoints(user.uid);
+      } else {
+        setUserPoints(0);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load user points from Firestore
+  const loadUserPoints = async (userId: string) => {
+    try {
+      const unsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
+        if (doc.exists()) {
+          const userData = doc.data();
+          setUserPoints(userData.points || 0);
+        } else {
+          setUserPoints(0);
+        }
+        setLoading(false);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error loading user points:', error);
+      setUserPoints(0);
+      setLoading(false);
+    }
+  };
+  
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   }
   
-  // Fixed animation variants with proper TypeScript typing
+  // Animation variants
   const sidebarVariants = {
     hidden: { x: -100, opacity: 0 },
     visible: { 
@@ -72,7 +119,6 @@ export default function Sidebar() {
     }
   };
   
-  // Fixed logo variants
   const logoVariants = {
     initial: { rotate: 0, scale: 1 },
     hover: { 
@@ -85,7 +131,6 @@ export default function Sidebar() {
     }
   };
 
-  // Fixed points variants
   const pointsVariants = {
     initial: { backgroundPosition: "0% 50%" },
     animate: { 
@@ -98,34 +143,6 @@ export default function Sidebar() {
       }
     }
   };
-
-  // Fixed card variants for stats
-  const cardVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
-      y: 0, 
-      transition: { 
-        duration: 0.5,
-        ease: "easeOut" as const
-      } 
-    }
-  };
-
-  // Fixed tab content variants
-  const tabContentVariants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1, 
-      transition: { 
-        duration: 0.3,
-        ease: "easeOut" as const
-      } 
-    }
-  };
-
-  // Points data
-  const userPoints = 1250;
 
   // Check if link is active
   const isActiveLink = (linkPath: string) => {
@@ -226,7 +243,11 @@ export default function Sidebar() {
                   ease: "easeInOut" as const
                 }}
               >
-                🌱
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  '🌱'
+                )}
               </motion.div>
             </div>
             <div className="flex-1">
@@ -234,7 +255,13 @@ export default function Sidebar() {
                 <p className="text-sm text-emerald-700 font-semibold">Eco Points</p>
                 <Sparkles className="w-3 h-3 text-emerald-500" />
               </div>
-              <p className="text-2xl font-bold text-emerald-800">{userPoints.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-emerald-800">
+                {loading ? (
+                  <div className="h-6 bg-emerald-200 rounded animate-pulse w-16"></div>
+                ) : (
+                  userPoints.toLocaleString()
+                )}
+              </p>
             </div>
             <ChevronRight className="w-5 h-5 text-emerald-600 group-hover:translate-x-1 transition-transform duration-200" />
           </div>
@@ -249,6 +276,7 @@ export default function Sidebar() {
         </motion.div>
       </Link>
       
+      {/* Rest of the sidebar code remains the same */}
       {/* Elegant divider */}
       <div className="relative mb-6">
         <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>

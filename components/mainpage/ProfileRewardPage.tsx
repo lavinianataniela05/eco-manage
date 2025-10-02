@@ -174,22 +174,39 @@ export default function ProfilePage() {
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
 
   // Listen to auth state changes
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        await loadUserData(user.uid);
-        await loadUserActivities(user.uid);
-        await loadUserOrders(user.uid);
-        await loadUserCollections(user.uid);
-      } else {
-        router.push('/login');
-      }
-      setLoading(false);
-    });
+  // Dalam useEffect yang sudah ada di profile page, tambahkan real-time listener untuk points
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      setCurrentUser(user);
+      await loadUserData(user.uid);
+      await loadUserActivities(user.uid);
+      await loadUserOrders(user.uid);
+      await loadUserCollections(user.uid);
+      
+      // Add real-time listener for points updates
+      const userDocRef = doc(db, 'users', user.uid);
+      const unsubscribePoints = onSnapshot(userDocRef, (doc) => {
+        if (doc.exists()) {
+          const userData = doc.data();
+          setUser(prev => ({
+            ...prev,
+            points: userData.points || 0
+          }));
+        }
+      });
 
-    return () => unsubscribe();
-  }, [router]);
+      return () => {
+        unsubscribePoints();
+      };
+    } else {
+      router.push('/login');
+    }
+    setLoading(false);
+  });
+
+  return () => unsubscribe();
+}, [router]);
 
   // Load user data from Firestore
   const loadUserData = async (userId: string) => {
