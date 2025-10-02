@@ -262,34 +262,6 @@ export default function Dashboard() {
               </div>
             </motion.div>
             
-            {/* Points Display */}
-            <motion.div
-              variants={itemVariants}
-              className="mb-8"
-            >
-              <div className="bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg backdrop-blur-sm max-w-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Sparkles className="w-6 h-6 text-amber-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600 font-medium">Your Eco Points</p>
-                      <p className="text-2xl font-bold text-gray-800">{userPoints.toLocaleString()} pts</p>
-                    </div>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleNavigation('/subscription')}
-                    className="flex items-center space-x-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all"
-                  >
-                    <Crown className="w-4 h-4" />
-                    <span>Upgrade</span>
-                  </motion.button>
-                </div>
-              </div>
-            </motion.div>
             
             <div className="grid lg:grid-cols-2 gap-8 items-center mt-4">
               <motion.div 

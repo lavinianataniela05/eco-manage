@@ -259,39 +259,41 @@ useEffect(() => {
   };
 
   // Load user activities with error handling for indexes
-  const loadUserActivities = async (userId: string) => {
-    setActivitiesLoading(true);
-    try {
-      // Try with ordering first (if index exists)
-      const activitiesQuery = query(
-        collection(db, 'activities'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const unsubscribe = onSnapshot(activitiesQuery, 
-        (snapshot) => {
-          const activitiesData: Activity[] = [];
-          snapshot.forEach((doc) => {
-            activitiesData.push({ id: doc.id, ...doc.data() } as Activity);
-          });
-          setActivities(activitiesData);
-          setActivitiesLoading(false);
-        },
-        (error) => {
-          console.warn('Index not ready, using fallback:', error);
-          // If index doesn't exist yet, use fallback
-          loadActivitiesFallback(userId);
-        }
-      );
+ // Load user activities with proper error handling for indexes
+const loadUserActivities = async (userId: string) => {
+  setActivitiesLoading(true);
+  try {
+    // Try with ordering first (if index exists)
+    const activitiesQuery = query(
+      collection(db, 'activities'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const unsubscribe = onSnapshot(activitiesQuery, 
+      (snapshot) => {
+        const activitiesData: Activity[] = [];
+        snapshot.forEach((doc) => {
+          activitiesData.push({ id: doc.id, ...doc.data() } as Activity);
+        });
+        setActivities(activitiesData);
+        setActivitiesLoading(false);
+      },
+      (error) => {
+        console.warn('Index not ready, using fallback:', error);
+        // If index doesn't exist yet, use fallback without ordering
+        loadActivitiesFallback(userId);
+      }
+    );
 
-      return unsubscribe;
-    } catch (error) {
-      console.error('Error setting up activities listener:', error);
-      // Use fallback method
-      loadActivitiesFallback(userId);
-    }
-  };
+    return unsubscribe;
+  } catch (error) {
+    console.error('Error setting up activities listener:', error);
+    // Use fallback method
+    loadActivitiesFallback(userId);
+  }
+};
+
 
   // Fallback method without ordering
   const loadActivitiesFallback = async (userId: string) => {
@@ -365,54 +367,62 @@ useEffect(() => {
   };
 
   // Load user collections (recycling history)
-  const loadUserCollections = async (userId: string) => {
-    setCollectionsLoading(true);
-    try {
-      const collectionsQuery = query(
-        collection(db, 'collections'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-      
-      const snapshot = await getDocs(collectionsQuery);
-      const collectionsData: Collection[] = [];
-      let totalRecycling = 0;
-      let totalCarbonOffset = 0;
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        collectionsData.push({
-          id: doc.id,
-          pickupDate: data.pickupDate,
-          pickupTime: data.pickupTime,
-          recyclingTypeLabel: data.recyclingTypeLabel,
-          bagsCount: data.bagsCount,
-          pointsEarned: data.pointsEarned || 0,
-          status: data.status,
-          totalCost: data.totalCost || 0,
-          address: data.address
-        });
-        totalRecycling += data.bagsCount || 0;
-        totalCarbonOffset += (data.bagsCount || 0) * 2.5; // 1kg = 2.5kg carbon offset
+  // Load user collections (recycling history) - simplified version
+const loadUserCollections = async (userId: string) => {
+  setCollectionsLoading(true);
+  try {
+    // Query without ordering first to avoid index requirements
+    const collectionsQuery = query(
+      collection(db, 'collections'),
+      where('userId', '==', userId)
+    );
+    
+    const snapshot = await getDocs(collectionsQuery);
+    const collectionsData: Collection[] = [];
+    let totalRecycling = 0;
+    let totalCarbonOffset = 0;
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      collectionsData.push({
+        id: doc.id,
+        pickupDate: data.pickupDate,
+        pickupTime: data.pickupTime,
+        recyclingTypeLabel: data.recyclingTypeLabel,
+        bagsCount: data.bagsCount,
+        pointsEarned: data.pointsEarned || 0,
+        status: data.status,
+        totalCost: data.totalCost || 0,
+        address: data.address
       });
-      
-      setCollections(collectionsData);
-      
-      // Update user stats
-      setUser(prev => ({
-        ...prev,
-        completedPickups: collectionsData.filter(c => c.status === 'completed').length,
-        scheduledPickups: collectionsData.filter(c => c.status === 'scheduled').length,
-        totalRecycling,
-        carbonOffset: totalCarbonOffset
-      }));
-      
-    } catch (error) {
-      console.error('Error loading collections:', error);
-    } finally {
-      setCollectionsLoading(false);
-    }
-  };
+      totalRecycling += data.bagsCount || 0;
+      totalCarbonOffset += (data.bagsCount || 0) * 2.5;
+    });
+    
+    // Sort manually on client side
+    collectionsData.sort((a, b) => {
+      const dateA = new Date(a.pickupDate?.toDate?.() || a.pickupDate).getTime();
+      const dateB = new Date(b.pickupDate?.toDate?.() || b.pickupDate).getTime();
+      return dateB - dateA; // Descending order
+    });
+    
+    setCollections(collectionsData);
+    
+    // Update user stats
+    setUser(prev => ({
+      ...prev,
+      completedPickups: collectionsData.filter(c => c.status === 'completed').length,
+      scheduledPickups: collectionsData.filter(c => c.status === 'scheduled').length,
+      totalRecycling,
+      carbonOffset: totalCarbonOffset
+    }));
+    
+  } catch (error) {
+    console.error('Error loading collections:', error);
+  } finally {
+    setCollectionsLoading(false);
+  }
+};
 
   // Add activity to Firestore
   const addActivity = async (userId: string, activity: Omit<Activity, 'id'>) => {
