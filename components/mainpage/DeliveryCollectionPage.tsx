@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, increment } from 'firebase/firestore';
 import { db, auth } from '@/firebase/config'
 import { useAuthState } from 'react-firebase-hooks/auth';
 
@@ -22,7 +22,7 @@ const EcoCollectScheduler = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // State baru untuk pembayaran dan jarak
+  // State untuk pembayaran dan jarak
   const [distance, setDistance] = useState<number | null>(null);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("credit_card");
@@ -30,6 +30,9 @@ const EcoCollectScheduler = () => {
   const [expiryDate, setExpiryDate] = useState("");
   const [cvv, setCvv] = useState("");
   const [cardholderName, setCardholderName] = useState("");
+
+  // Points system
+  const [pointsEarned, setPointsEarned] = useState(0);
 
   const timeSlots = [
     "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
@@ -39,12 +42,54 @@ const EcoCollectScheduler = () => {
   ];
 
   const recyclingTypes = [
-    { id: "mixed", label: "Mixed Recycling", icon: "🔄", color: "bg-emerald-100", basePrice: 5000 },
-    { id: "paper", label: "Paper/Cardboard", icon: "📄", color: "bg-blue-100", basePrice: 3000 },
-    { id: "plastic", label: "Plastics", icon: "🥤", color: "bg-yellow-100", basePrice: 4000 },
-    { id: "glass", label: "Glass", icon: "🔍", color: "bg-green-100", basePrice: 4500 },
-    { id: "metal", label: "Metal", icon: "🥫", color: "bg-gray-100", basePrice: 6000 },
-    { id: "ewaste", label: "E-Waste", icon: "💻", color: "bg-purple-100", basePrice: 8000 }
+    { 
+      id: "mixed", 
+      label: "Mixed Recycling", 
+      icon: "🔄", 
+      color: "bg-emerald-100", 
+      basePrice: 5000,
+      pointsPerKg: 5 // 5 points per kg for mixed recycling
+    },
+    { 
+      id: "paper", 
+      label: "Paper/Cardboard", 
+      icon: "📄", 
+      color: "bg-blue-100", 
+      basePrice: 3000,
+      pointsPerKg: 4 // 4 points per kg for paper
+    },
+    { 
+      id: "plastic", 
+      label: "Plastics", 
+      icon: "🥤", 
+      color: "bg-yellow-100", 
+      basePrice: 4000,
+      pointsPerKg: 3 // 3 points per kg for plastic
+    },
+    { 
+      id: "glass", 
+      label: "Glass", 
+      icon: "🔍", 
+      color: "bg-green-100", 
+      basePrice: 4500,
+      pointsPerKg: 6 // 6 points per kg for glass
+    },
+    { 
+      id: "metal", 
+      label: "Metal", 
+      icon: "🥫", 
+      color: "bg-gray-100", 
+      basePrice: 6000,
+      pointsPerKg: 7 // 7 points per kg for metal
+    },
+    { 
+      id: "ewaste", 
+      label: "E-Waste", 
+      icon: "💻", 
+      color: "bg-purple-100", 
+      basePrice: 8000,
+      pointsPerKg: 10 // 10 points per kg for e-waste
+    }
   ];
 
   const months = [
@@ -81,6 +126,17 @@ const EcoCollectScheduler = () => {
     setFormComplete(checkFormCompletion());
   }, [currentStep, selectedDate, selectedTime, recyclingType, bagsCount, address, email, phone, distance, paymentMethod, cardNumber, expiryDate, cvv, cardholderName]);
 
+  // Calculate points when recycling type or bags count changes
+  useEffect(() => {
+    if (recyclingType && bagsCount > 0) {
+      const selectedType = recyclingTypes.find(type => type.id === recyclingType);
+      if (selectedType) {
+        const points = selectedType.pointsPerKg * bagsCount;
+        setPointsEarned(points);
+      }
+    }
+  }, [recyclingType, bagsCount]);
+
   // Fungsi untuk menghitung jarak (simulasi)
   const calculateDistance = async () => {
     if (!address) return;
@@ -111,13 +167,48 @@ const EcoCollectScheduler = () => {
     return totalCost;
   };
 
+  // Fungsi untuk menambahkan points ke user profile
+  const addPointsToUser = async (userId: string, points: number) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        points: increment(points),
+        completedPickups: increment(1),
+        carbonOffset: increment(bagsCount * 2.5) // Assuming 1kg waste = 2.5kg carbon offset
+      });
+      return true;
+    } catch (error) {
+      console.error('Error adding points to user:', error);
+      return false;
+    }
+  };
+
+  // Fungsi untuk menambahkan activity
+  const addActivity = async (userId: string, activityData: any) => {
+    try {
+      await addDoc(collection(db, 'activities'), {
+        ...activityData,
+        userId,
+        createdAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error('Error adding activity:', error);
+      return false;
+    }
+  };
+
   // Fungsi untuk menyimpan data ke Firebase
   const saveToFirebase = async () => {
     if (!user || !selectedDate) return null;
 
+    const selectedType = recyclingTypes.find(t => t.id === recyclingType);
+    const totalPoints = selectedType ? selectedType.pointsPerKg * bagsCount : 0;
+
     const collectionData = {
       userId: user.uid,
       userEmail: user.email,
+      userName: user.displayName || user.email?.split('@')[0] || 'User',
       pickupDate: selectedDate,
       pickupTime: selectedTime,
       address: address,
@@ -125,13 +216,14 @@ const EcoCollectScheduler = () => {
       phone: phone,
       pickupNotes: pickupNotes,
       recyclingType: recyclingType,
-      recyclingTypeLabel: recyclingTypes.find(t => t.id === recyclingType)?.label,
+      recyclingTypeLabel: selectedType?.label,
       bagsCount: bagsCount,
       weight: bagsCount, // Assuming 1 bag = 1 kg
       distance: distance,
       totalCost: calculateTotalCost(),
       paymentMethod: paymentMethod,
-      status: 'scheduled', // scheduled, in_progress, completed, cancelled
+      pointsEarned: totalPoints,
+      status: 'scheduled',
       statusLabel: 'Scheduled',
       collector: null,
       collectorPhone: null,
@@ -142,6 +234,19 @@ const EcoCollectScheduler = () => {
 
     try {
       const docRef = await addDoc(collection(db, 'collections'), collectionData);
+      
+      // Add points to user profile
+      await addPointsToUser(user.uid, totalPoints);
+      
+      // Add activity
+      await addActivity(user.uid, {
+        type: 'pickup',
+        title: "Recycling Pickup Scheduled",
+        description: `Scheduled ${bagsCount}kg ${selectedType?.label} pickup for ${selectedDate.toLocaleDateString()}`,
+        date: new Date().toISOString().split('T')[0],
+        points: totalPoints
+      });
+
       return docRef.id;
     } catch (error) {
       console.error('Error saving to Firebase:', error);
@@ -298,6 +403,7 @@ const EcoCollectScheduler = () => {
     setExpiryDate("");
     setCvv("");
     setCardholderName("");
+    setPointsEarned(0);
   };
 
   const formatCurrency = (amount: number) => {
@@ -311,6 +417,7 @@ const EcoCollectScheduler = () => {
   const formattedDate = formatDate(selectedDate);
   const selectedRecyclingLabel = recyclingTypes.find(t => t.id === recyclingType)?.label;
   const selectedRecyclingBasePrice = recyclingTypes.find(t => t.id === recyclingType)?.basePrice || 0;
+  const selectedRecyclingPointsPerKg = recyclingTypes.find(t => t.id === recyclingType)?.pointsPerKg || 0;
   const totalCost = calculateTotalCost();
 
   const renderReviewSummary = () => (
@@ -359,6 +466,20 @@ const EcoCollectScheduler = () => {
             <span className="text-emerald-700 font-bold">Total Cost:</span>
             <span className="font-bold text-lg text-emerald-800">
               {formatCurrency(totalCost)}
+            </span>
+          </div>
+        </div>
+        {/* Points Section */}
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 p-4 rounded-xl border border-amber-200">
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-amber-700 font-bold">Points You'll Earn:</span>
+              <p className="text-sm text-amber-600">
+                {bagsCount}kg × {selectedRecyclingPointsPerKg} points/kg
+              </p>
+            </div>
+            <span className="text-2xl font-bold text-amber-700">
+              +{pointsEarned} pts
             </span>
           </div>
         </div>
@@ -479,6 +600,19 @@ const EcoCollectScheduler = () => {
               Includes base recycling cost and distance-based delivery fee
             </p>
           </div>
+
+          {/* Points Preview in Payment Step */}
+          <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 rounded-2xl text-white">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="font-bold text-lg">Points You'll Earn</span>
+                <p className="text-amber-100 text-sm">
+                  {bagsCount}kg {selectedRecyclingLabel} × {selectedRecyclingPointsPerKg} points/kg
+                </p>
+              </div>
+              <span className="text-3xl font-bold">+{pointsEarned}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -571,6 +705,19 @@ const EcoCollectScheduler = () => {
                   <p className="text-lg text-emerald-600 mb-8">
                     We've sent confirmation details to your email.
                   </p>
+
+                  {/* Points Earned Celebration */}
+                  <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-6 rounded-2xl text-white max-w-md mx-auto mb-8 shadow-lg">
+                    <div className="text-center">
+                      <div className="text-4xl mb-2">🎉</div>
+                      <h4 className="text-2xl font-bold mb-2">Congratulations!</h4>
+                      <p className="text-lg mb-2">You've earned</p>
+                      <div className="text-4xl font-bold mb-2">+{pointsEarned} Points</div>
+                      <p className="text-amber-100">
+                        Your points will be added to your profile after pickup completion
+                      </p>
+                    </div>
+                  </div>
                   
                   <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl shadow-inner border border-emerald-100 max-w-md mx-auto mb-8">
                     <div className="space-y-4 text-left">
@@ -606,6 +753,12 @@ const EcoCollectScheduler = () => {
                         <span className="text-emerald-600 font-medium">Total Cost:</span>
                         <span className="font-bold text-emerald-800">
                           {formatCurrency(totalCost)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-emerald-100 pb-3">
+                        <span className="text-emerald-600 font-medium">Points Earned:</span>
+                        <span className="font-bold text-amber-600">
+                          +{pointsEarned} pts
                         </span>
                       </div>
                       {pickupNotes && (
@@ -742,7 +895,10 @@ const EcoCollectScheduler = () => {
                                 onClick={() => setRecyclingType(type.id)}
                               >
                                 <span className="text-2xl">{type.icon}</span>
-                                <span className="text-sm font-medium text-emerald-800">{type.label}</span>
+                                <div className="text-left">
+                                  <span className="text-sm font-medium text-emerald-800 block">{type.label}</span>
+                                  <span className="text-xs text-emerald-600">{type.pointsPerKg} pts/kg</span>
+                                </div>
                               </button>
                             ))}
                           </div>
@@ -772,6 +928,18 @@ const EcoCollectScheduler = () => {
                           <p className="text-center text-emerald-600 mt-2 text-sm">
                             {bagsCount} {bagsCount === 1 ? "kg" : "kgs"}
                           </p>
+                          
+                          {/* Points Preview */}
+                          {pointsEarned > 0 && (
+                            <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
+                              <p className="text-amber-800 font-medium">
+                                You'll earn <span className="font-bold">+{pointsEarned} points</span>
+                              </p>
+                              <p className="text-xs text-amber-600">
+                                {bagsCount}kg × {selectedRecyclingPointsPerKg} points/kg
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -792,6 +960,9 @@ const EcoCollectScheduler = () => {
                               <p className="text-sm text-emerald-500 mt-1">
                                 Base price: {formatCurrency(selectedRecyclingBasePrice)}/kg
                               </p>
+                              <p className="text-sm text-amber-600 font-medium mt-1">
+                                Points: {selectedRecyclingPointsPerKg} per kg
+                              </p>
                             </div>
                           </div>
                           
@@ -800,6 +971,18 @@ const EcoCollectScheduler = () => {
                               <p className="text-emerald-700">
                                 <span className="font-medium">Pickup:</span> {formattedDate.dayName}, {formattedDate.month} {formattedDate.day} at {selectedTime}
                               </p>
+                            </div>
+                          )}
+                          
+                          {/* Points Summary */}
+                          {pointsEarned > 0 && (
+                            <div className="border-t border-emerald-100 pt-4 mt-4">
+                              <div className="bg-gradient-to-r from-amber-400 to-yellow-500 p-3 rounded-lg text-white text-center">
+                                <p className="font-bold text-lg">+{pointsEarned} Points</p>
+                                <p className="text-amber-100 text-sm">
+                                  Will be added to your profile
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>
