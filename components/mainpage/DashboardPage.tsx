@@ -1,21 +1,64 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Leaf, MapPin, Award, Recycle, Calendar, Globe, History, User, Info, Map, Sparkles, Crown, Zap } from 'lucide-react';
+import { 
+  Leaf, MapPin, Award, Recycle, Calendar, Globe, History, User, 
+  Info, Map, Sparkles, Crown, Zap, Users, Target, TreePine, 
+  ChevronRight, CheckCircle, ArrowRight 
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 
-export default function Dashboard() {
+export default function UnifiedDashboard() {
   const router = useRouter();
   const [isVisible, setIsVisible] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
+  const [counters, setCounters] = useState({
+    wasteProcessed: 0,
+    co2Saved: 0,
+    treesPlanted: 0,
+    communitiesServed: 0
+  });
+
+  const FINAL_COUNTS = {
+    wasteProcessed: 12500,
+    co2Saved: 8900,
+    treesPlanted: 4500,
+    communitiesServed: 150
+  };
 
   useEffect(() => {
     setIsVisible(true);
-    const interval = setInterval(() => {
+    
+    // Feature rotation
+    const featureInterval = setInterval(() => {
       setActiveFeature(prev => (prev + 1) % 4);
     }, 4000);
-    return () => clearInterval(interval);
+
+    // Counter animation
+    const duration = 2500;
+    const steps = 100;
+    const counterInterval = duration / steps;
+
+    const counterTimer = setInterval(() => {
+      setCounters(prev => ({
+        wasteProcessed: Math.min(prev.wasteProcessed + FINAL_COUNTS.wasteProcessed / steps, FINAL_COUNTS.wasteProcessed),
+        co2Saved: Math.min(prev.co2Saved + FINAL_COUNTS.co2Saved / steps, FINAL_COUNTS.co2Saved),
+        treesPlanted: Math.min(prev.treesPlanted + FINAL_COUNTS.treesPlanted / steps, FINAL_COUNTS.treesPlanted),
+        communitiesServed: Math.min(prev.communitiesServed + FINAL_COUNTS.communitiesServed / steps, FINAL_COUNTS.communitiesServed)
+      }));
+    }, counterInterval);
+
+    const timeout = setTimeout(() => {
+      clearInterval(counterTimer);
+      setCounters(FINAL_COUNTS);
+    }, duration);
+
+    return () => {
+      clearInterval(featureInterval);
+      clearInterval(counterTimer);
+      clearTimeout(timeout);
+    };
   }, []);
 
   const features = [
@@ -126,48 +169,37 @@ export default function Dashboard() {
     },
   ];
 
-  const stats = [
-    { 
-      value: "12.5k", 
-      label: "Kg Recycled", 
-      change: "+12%", 
-      color: "text-emerald-600",
-      icon: "♻️",
-      description: "Total waste processed"
+  const coreValues = [
+    {
+      icon: <Globe className="w-6 h-6" />,
+      title: "Environmental Stewardship",
+      description: "Committed to protecting our planet through innovative recycling solutions",
+      color: "text-teal-500"
     },
-    { 
-      value: "890", 
-      label: "Active Users", 
-      change: "+8%", 
-      color: "text-teal-600",
-      icon: "👥",
-      description: "Community members"
+    {
+      icon: <Users className="w-6 h-6" />,
+      title: "Community Impact",
+      description: "Building stronger communities through education and accessible programs",
+      color: "text-blue-500"
     },
-    { 
-      value: "45%", 
-      label: "CO₂ Reduction", 
-      change: "+5%", 
-      color: "text-cyan-600",
-      icon: "🌍",
-      description: "Carbon footprint saved"
+    {
+      icon: <Target className="w-6 h-6" />,
+      title: "Innovation Focus",
+      description: "Leveraging technology to transform waste into valuable resources",
+      color: "text-purple-500"
     },
-    { 
-      value: "98%", 
-      label: "Efficiency Rate", 
-      change: "+3%", 
-      color: "text-blue-600",
-      icon: "⚡",
-      description: "Processing accuracy"
+    {
+      icon: <Award className="w-6 h-6" />,
+      title: "Quality Excellence",
+      description: "Highest standards in waste processing and environmental compliance",
+      color: "text-amber-500"
     }
   ];
-
-  const userPoints = 1250;
 
   const handleNavigation = (href: string) => {
     router.push(href);
   };
 
-  // Fixed Animation variants with proper TypeScript types
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -185,12 +217,11 @@ export default function Dashboard() {
       y: 0,
       transition: {
         duration: 0.5,
-        ease: "easeOut" as const // Use string literal type
+        ease: "easeOut" as const
       }
     }
   };
 
-  // Animation for background elements
   const backgroundElementAnimation = {
     animate: {
       opacity: [0.1, 0.2, 0.1],
@@ -200,9 +231,29 @@ export default function Dashboard() {
       duration: 15,
       repeat: Infinity,
       repeatType: "reverse" as const,
-      ease: "easeInOut" as const
+      ease: [0.42, 0, 0.58, 1] // cubic-bezier equivalent of easeInOut
     }
   };
+
+  const StatCard = ({ icon, label, value, color, change }: { 
+    icon: string; 
+    label: string; 
+    value: string; 
+    color: string;
+    change?: string;
+  }) => (
+    <motion.div 
+      whileHover={{ scale: 1.05 }}
+      className="text-center p-4 rounded-xl bg-gradient-to-br from-slate-50 to-gray-50 hover:from-white hover:to-gray-100 transition-all cursor-pointer border border-gray-100/50"
+    >
+      <div className="text-2xl mb-2">{icon}</div>
+      <div className={`text-2xl md:text-3xl font-bold ${color} mb-1`}>
+        {value}
+      </div>
+      <div className="text-sm text-gray-600 font-medium">{label}</div>
+      {change && <div className="text-xs text-emerald-500 font-semibold">{change}</div>}
+    </motion.div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50 overflow-hidden">
@@ -223,6 +274,7 @@ export default function Dashboard() {
             transition={{
               ...backgroundElementAnimation.transition,
               duration: 15 + Math.random() * 20,
+              ease: [0.42, 0, 0.58, 1]
             }}
           />
         ))}
@@ -262,7 +314,6 @@ export default function Dashboard() {
               </div>
             </motion.div>
             
-            
             <div className="grid lg:grid-cols-2 gap-8 items-center mt-4">
               <motion.div 
                 variants={itemVariants}
@@ -274,20 +325,34 @@ export default function Dashboard() {
                 </div>
                 <div className="bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg backdrop-blur-sm">
                   <div className="grid grid-cols-2 gap-6">
-                    {stats.map((stat, index) => (
-                      <motion.div 
-                        key={index}
-                        whileHover={{ scale: 1.05 }}
-                        className="text-center p-4 rounded-xl bg-gradient-to-br from-slate-50 to-gray-50 hover:from-white hover:to-gray-100 transition-all cursor-pointer"
-                      >
-                        <div className="text-2xl mb-2">{stat.icon}</div>
-                        <div className={`text-2xl md:text-3xl font-bold ${stat.color} mb-1`}>
-                          {stat.value}
-                        </div>
-                        <div className="text-sm text-gray-600 font-medium">{stat.label}</div>
-                        <div className="text-xs text-emerald-500 font-semibold">{stat.change}</div>
-                      </motion.div>
-                    ))}
+                    <StatCard 
+                      icon="♻️" 
+                      label="Kg Recycled" 
+                      value={`${Math.floor(counters.wasteProcessed).toLocaleString()}+`} 
+                      color="text-emerald-600"
+                      change="+12%"
+                    />
+                    <StatCard 
+                      icon="👥" 
+                      label="Active Users" 
+                      value={`${Math.floor(counters.communitiesServed).toLocaleString()}+`} 
+                      color="text-teal-600"
+                      change="+8%"
+                    />
+                    <StatCard 
+                      icon="🌍" 
+                      label="CO₂ Reduction" 
+                      value={`${Math.floor(counters.co2Saved).toLocaleString()}kg`} 
+                      color="text-cyan-600"
+                      change="+5%"
+                    />
+                    <StatCard 
+                      icon="🌱" 
+                      label="Trees Planted" 
+                      value={`${Math.floor(counters.treesPlanted).toLocaleString()}+`} 
+                      color="text-green-600"
+                      change="+15%"
+                    />
                   </div>
                 </div>
               </motion.div>
@@ -323,6 +388,58 @@ export default function Dashboard() {
             </div>
           </div>
         </motion.section>
+
+        {/* Core Values Section */}
+        <section className="mb-20">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "0px 0px -100px 0px" }}
+            className="text-center mb-12"
+          >
+            <motion.h2 
+              variants={itemVariants}
+              className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
+            >
+              Our <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Core Values</span>
+            </motion.h2>
+            <motion.p 
+              variants={itemVariants}
+              className="text-lg text-gray-600 max-w-2xl mx-auto"
+            >
+              Guiding every decision and action we take towards a sustainable future
+            </motion.p>
+          </motion.div>
+
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+          >
+            {coreValues.map((value, index) => (
+              <motion.div
+                key={index}
+                variants={itemVariants}
+                whileHover={{ y: -8, scale: 1.02 }}
+                className="group relative bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg hover:shadow-xl backdrop-blur-sm transition-all duration-300"
+              >
+                <div className={`p-3 rounded-xl bg-opacity-10 ${value.color.replace('text-', 'bg-')} mb-4 w-fit group-hover:scale-110 transition-transform`}>
+                  {value.icon}
+                </div>
+                
+                <h3 className="text-lg font-bold text-gray-800 mb-3 group-hover:text-teal-600 transition-colors">
+                  {value.title}
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  {value.description}
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </section>
 
         {/* Enhanced Feature Buttons Section */}
         <section className="mb-20">
@@ -549,6 +666,50 @@ export default function Dashboard() {
                   Find Recycling Centers
                 </motion.button>
               </motion.div>
+            </div>
+          </motion.div>
+        </section>
+
+        {/* Mission Call to Action */}
+        <section className="mb-20">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={containerVariants}
+            className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-teal-600 to-emerald-700 text-white"
+          >
+            <div className="absolute inset-0 opacity-20">
+              <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-xl animate-pulse"></div>
+              <div className="absolute bottom-20 right-20 w-24 h-24 bg-teal-300 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }}></div>
+            </div>
+            
+            <div className="relative z-10 p-12 text-center">
+              <Sparkles className="w-12 h-12 text-yellow-300 mx-auto mb-6 animate-pulse" />
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Make a Difference?</h2>
+              <p className="text-lg text-teal-100 mb-8 font-light leading-relaxed max-w-2xl mx-auto">
+                Join thousands of environmental champions already making a difference. Together, we can build a greener, more sustainable future.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <motion.button
+                  onClick={() => handleNavigation('/delivery-collection')}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="group bg-white text-teal-700 px-8 py-4 rounded-full font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center space-x-2"
+                >
+                  <span>Start Recycling Today</span>
+                  <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </motion.button>
+                <motion.button
+                  onClick={() => handleNavigation('/about')}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="group border-2 border-white text-white px-8 py-4 rounded-full font-semibold backdrop-blur-sm bg-white/10 hover:bg-white hover:text-teal-700 transition-all"
+                >
+                  Learn About Our Mission
+                </motion.button>
+              </div>
             </div>
           </motion.div>
         </section>
