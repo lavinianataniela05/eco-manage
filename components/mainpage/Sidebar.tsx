@@ -211,7 +211,7 @@ export default function Sidebar() {
         </motion.div>
         <div>
           <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600">
-            EcoWaste
+            EcoManage
           </h2>
           <p className="text-xs text-slate-500 font-medium">Sustainable Living</p>
         </div>

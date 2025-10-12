@@ -215,7 +215,7 @@ export default function AboutUs() {
           </div>
           
           <h1 className="text-5xl md:text-7xl font-bold mb-8 bg-gradient-to-r from-white via-teal-100 to-emerald-100 bg-clip-text text-transparent leading-tight">
-            About EcoWaste
+            About EcoManage
           </h1>
           
           <p className="text-xl md:text-2xl text-teal-100 max-w-4xl mx-auto mb-12 font-light leading-relaxed">

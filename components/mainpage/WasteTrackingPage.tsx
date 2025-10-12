@@ -175,7 +175,7 @@ export default function WasteTracking() {
         date: dateText,
         time: item.pickupTime || 'Time not set',
         type: item.recyclingTypeLabel || 'Recycling',
-        collector: item.collector || 'EcoCollect Team'
+        collector: item.collector || 'EcoManage Team'
       }
     })
 

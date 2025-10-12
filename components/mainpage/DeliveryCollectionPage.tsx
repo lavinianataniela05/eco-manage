@@ -787,7 +787,7 @@ const EcoCollectScheduler = () => {
             <span className="text-2xl">♻️</span>
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-700 to-emerald-500 bg-clip-text text-transparent mb-2">
-            EcoCollect
+            EcoManage
           </h1>
           <h2 className="text-2xl font-bold text-emerald-800 mb-2">
             Schedule a Pickup

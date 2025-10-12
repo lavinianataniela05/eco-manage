@@ -254,7 +254,7 @@ export default function Dashboard() {
               </motion.div>
               <div>
                 <h1 className="text-4xl md:text-6xl font-black text-gray-900 mb-3 tracking-tight">
-                  Eco<span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Waste</span>
+                  Eco<span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Manage</span>
                 </h1>
                 <p className="text-lg md:text-xl text-gray-600 font-light max-w-2xl">
                   Intelligent waste management solutions powered by AI and IoT technology
@@ -562,7 +562,7 @@ export default function Dashboard() {
           className="text-center py-8 border-t border-teal-100/50"
         >
           <p className="text-gray-600">
-            © 2024 EcoWaste. Transforming waste management through innovation.
+            © 2024 EcoManage. Transforming waste management through innovation.
           </p>
         </motion.footer>
       </main>
