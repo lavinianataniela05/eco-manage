@@ -4,15 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   Leaf, MapPin, Award, Recycle, Calendar, Globe, History, User, 
   Info, Map, Sparkles, Crown, Zap, Users, Target, TreePine, 
-  ChevronRight, CheckCircle, ArrowRight 
+  ChevronRight, CheckCircle, ArrowRight, TrendingUp, Shield, 
+  Lightbulb, BarChart3, Activity, Star
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 
 export default function UnifiedDashboard() {
-  const router = useRouter();
   const [isVisible, setIsVisible] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
+  const [hoveredWaste, setHoveredWaste] = useState<number | null>(null);
   const [counters, setCounters] = useState({
     wasteProcessed: 0,
     co2Saved: 0,
@@ -30,12 +29,10 @@ export default function UnifiedDashboard() {
   useEffect(() => {
     setIsVisible(true);
     
-    // Feature rotation
     const featureInterval = setInterval(() => {
       setActiveFeature(prev => (prev + 1) % 4);
     }, 4000);
 
-    // Counter animation
     const duration = 2500;
     const steps = 100;
     const counterInterval = duration / steps;
@@ -64,668 +61,603 @@ export default function UnifiedDashboard() {
   const features = [
     {
       icon: Calendar,
-      title: "Smart Pickup Scheduling",
-      description: "AI-optimized collection routes reducing emissions and improving efficiency",
-      color: "from-emerald-50 to-teal-50",
-      iconColor: "text-emerald-600",
-      bgColor: "bg-emerald-500"
+      title: "AI-Powered Scheduling",
+      description: "Machine learning algorithms optimize collection routes, reducing emissions by up to 40%",
+      color: "from-emerald-500 to-teal-600",
+      gradient: "from-emerald-50 via-emerald-100 to-teal-100",
+      stat: "40% less emissions"
     },
     {
       icon: MapPin,
-      title: "Smart Locations Network",
-      description: "IoT-enabled drop boxes with real-time capacity monitoring and analytics",
-      color: "from-teal-50 to-cyan-50",
-      iconColor: "text-teal-600",
-      bgColor: "bg-teal-500"
+      title: "IoT Smart Network",
+      description: "Real-time monitoring of 500+ drop points with predictive capacity analytics",
+      color: "from-blue-500 to-cyan-600",
+      gradient: "from-blue-50 via-blue-100 to-cyan-100",
+      stat: "500+ locations"
     },
     {
       icon: Award,
-      title: "Eco Rewards System",
-      description: "Blockchain-verified sustainability points and reward redemption",
-      color: "from-green-50 to-emerald-50",
-      iconColor: "text-green-600",
-      bgColor: "bg-green-500"
+      title: "Blockchain Rewards",
+      description: "Immutable sustainability credits verified on distributed ledger technology",
+      color: "from-purple-500 to-pink-600",
+      gradient: "from-purple-50 via-purple-100 to-pink-100",
+      stat: "100% verified"
     },
     {
       icon: Globe,
-      title: "Environmental Impact",
-      description: "Comprehensive carbon footprint reduction tracking and reporting",
-      color: "from-cyan-50 to-blue-50",
-      iconColor: "text-cyan-600",
-      bgColor: "bg-cyan-500"
+      title: "Carbon Intelligence",
+      description: "Comprehensive environmental impact tracking with ISO 14064 compliance",
+      color: "from-green-500 to-emerald-600",
+      gradient: "from-green-50 via-green-100 to-emerald-100",
+      stat: "ISO certified"
     }
   ];
 
   const wasteTypes = [
     { 
-      icon: "🔄", 
-      name: "Plastic", 
-      color: "from-blue-50 to-blue-100", 
-      count: "2.3k", 
-      subtitle: "Polymer Recycling",
-      points: 150 
+      icon: "♻️", 
+      name: "Plastic & Polymers", 
+      gradient: "from-blue-400 to-blue-600", 
+      bgGradient: "from-blue-50 to-blue-100",
+      count: "2,345", 
+      subtitle: "Advanced Polymer Recovery",
+      points: 150,
+      efficiency: "94%",
+      trend: "+12%"
     },
     { 
       icon: "📄", 
-      name: "Paper", 
-      color: "from-amber-50 to-amber-100", 
-      count: "1.8k", 
-      subtitle: "Fiber Recovery",
-      points: 120 
+      name: "Paper & Cardboard", 
+      gradient: "from-amber-400 to-orange-600", 
+      bgGradient: "from-amber-50 to-orange-100",
+      count: "1,876", 
+      subtitle: "Fiber Reclamation",
+      points: 120,
+      efficiency: "91%",
+      trend: "+8%"
     },
     { 
       icon: "⚙️", 
-      name: "Metal", 
-      color: "from-slate-50 to-slate-100", 
+      name: "Metals & Alloys", 
+      gradient: "from-slate-400 to-slate-700", 
+      bgGradient: "from-slate-50 to-slate-100",
       count: "945", 
-      subtitle: "Metal Reclamation",
-      points: 200 
+      subtitle: "Metal Extraction",
+      points: 200,
+      efficiency: "97%",
+      trend: "+15%"
     },
     { 
       icon: "🌱", 
-      name: "Organic", 
-      color: "from-green-50 to-green-100", 
-      count: "3.1k", 
-      subtitle: "Compost Processing",
-      points: 100 
+      name: "Organic Waste", 
+      gradient: "from-green-400 to-green-700", 
+      bgGradient: "from-green-50 to-green-100",
+      count: "3,124", 
+      subtitle: "Composting & Biogas",
+      points: 100,
+      efficiency: "89%",
+      trend: "+10%"
     }
   ];
 
   const featureButtons = [
     { 
-      name: "Recycling Centers", 
+      name: "Recycling Network", 
       icon: Map, 
-      href: "/recycling-centers", 
-      description: "Find nearby facilities",
-      color: "from-purple-500 to-pink-500"
+      description: "Find 500+ verified facilities",
+      color: "from-violet-500 via-purple-500 to-fuchsia-500",
+      shadowColor: "shadow-purple-500/30"
     },
     { 
-      name: "Waste Tracking", 
-      icon: History, 
-      href: "/waste-tracking", 
-      description: "Monitor your impact",
-      color: "from-blue-500 to-cyan-500"
+      name: "Impact Analytics", 
+      icon: BarChart3, 
+      description: "Real-time metrics dashboard",
+      color: "from-blue-500 via-cyan-500 to-teal-500",
+      shadowColor: "shadow-cyan-500/30"
     },
     { 
-      name: "Collection Schedule", 
+      name: "Smart Collection", 
       icon: Calendar, 
-      href: "/delivery-collection", 
-      description: "Manage pickups",
-      color: "from-teal-500 to-emerald-500"
+      description: "AI-optimized scheduling",
+      color: "from-emerald-500 via-teal-500 to-green-500",
+      shadowColor: "shadow-emerald-500/30"
     },
     { 
-      name: "Profile & Rewards", 
-      icon: User, 
-      href: "/profile-reward", 
-      description: "Your eco-profile",
-      color: "from-green-500 to-lime-500"
+      name: "Rewards Hub", 
+      icon: Award, 
+      description: "Earn & redeem eco-credits",
+      color: "from-amber-500 via-orange-500 to-red-500",
+      shadowColor: "shadow-amber-500/30"
     },
     { 
-      name: "About Our Mission", 
+      name: "Our Mission", 
       icon: Info, 
-      href: "/about", 
-      description: "Learn more",
-      color: "from-amber-500 to-orange-500"
+      description: "Discover our impact",
+      color: "from-indigo-500 via-blue-500 to-cyan-500",
+      shadowColor: "shadow-indigo-500/30"
     },
   ];
 
   const coreValues = [
     {
-      icon: <Globe className="w-6 h-6" />,
+      icon: Shield,
       title: "Environmental Stewardship",
-      description: "Committed to protecting our planet through innovative recycling solutions",
-      color: "text-teal-500"
+      description: "Leading the charge in sustainable waste management with proven results and measurable impact",
+      color: "text-teal-600",
+      bgColor: "bg-teal-50",
+      metric: "99.9%"
     },
     {
-      icon: <Users className="w-6 h-6" />,
-      title: "Community Impact",
-      description: "Building stronger communities through education and accessible programs",
-      color: "text-blue-500"
+      icon: Users,
+      title: "Community Partnership",
+      description: "Empowering local communities through education, accessibility, and shared environmental goals",
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      metric: "150+"
     },
     {
-      icon: <Target className="w-6 h-6" />,
-      title: "Innovation Focus",
-      description: "Leveraging technology to transform waste into valuable resources",
-      color: "text-purple-500"
+      icon: Lightbulb,
+      title: "Innovation Leadership",
+      description: "Pioneering technology integration with AI, IoT, and blockchain for next-gen waste solutions",
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+      metric: "24/7"
     },
     {
-      icon: <Award className="w-6 h-6" />,
-      title: "Quality Excellence",
-      description: "Highest standards in waste processing and environmental compliance",
-      color: "text-amber-500"
+      icon: Target,
+      title: "Excellence Standard",
+      description: "Maintaining ISO-certified processes with rigorous quality control and environmental compliance",
+      color: "text-amber-600",
+      bgColor: "bg-amber-50",
+      metric: "ISO+"
     }
   ];
 
-  const handleNavigation = (href: string) => {
-    router.push(href);
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
-    }
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.5,
-        ease: "easeOut" as const
-      }
-    }
-  };
-
-  const backgroundElementAnimation = {
-    animate: {
-      opacity: [0.1, 0.2, 0.1],
-      scale: [1, 1.1, 1],
-    },
-    transition: {
-      duration: 15,
-      repeat: Infinity,
-      repeatType: "reverse" as const,
-      ease: [0.42, 0, 0.58, 1] // cubic-bezier equivalent of easeInOut
-    }
-  };
-
-  const StatCard = ({ icon, label, value, color, change }: { 
-    icon: string; 
-    label: string; 
-    value: string; 
-    color: string;
-    change?: string;
-  }) => (
-    <motion.div 
-      whileHover={{ scale: 1.05 }}
-      className="text-center p-4 rounded-xl bg-gradient-to-br from-slate-50 to-gray-50 hover:from-white hover:to-gray-100 transition-all cursor-pointer border border-gray-100/50"
-    >
-      <div className="text-2xl mb-2">{icon}</div>
-      <div className={`text-2xl md:text-3xl font-bold ${color} mb-1`}>
-        {value}
-      </div>
-      <div className="text-sm text-gray-600 font-medium">{label}</div>
-      {change && <div className="text-xs text-emerald-500 font-semibold">{change}</div>}
-    </motion.div>
-  );
+  const achievements = [
+    { label: "Carbon Offset", value: "8.9k", unit: "tonnes", icon: "🌍", color: "text-cyan-600" },
+    { label: "Waste Diverted", value: "12.5k", unit: "tonnes", icon: "♻️", color: "text-emerald-600" },
+    { label: "Trees Equivalent", value: "4.5k", unit: "planted", icon: "🌳", color: "text-green-600" },
+    { label: "Active Community", value: "150", unit: "cities", icon: "🏙️", color: "text-teal-600" }
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50 overflow-hidden">
-      {/* Enhanced background pattern */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 relative overflow-hidden">
+      {/* Sophisticated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-100/20 via-transparent to-transparent"></div>
-        {[...Array(12)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute rounded-full bg-gradient-to-r from-teal-200/10 to-emerald-200/10"
-            initial={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: `${100 + Math.random() * 300}px`,
-              height: `${100 + Math.random() * 300}px`,
-            }}
-            animate={backgroundElementAnimation.animate}
-            transition={{
-              ...backgroundElementAnimation.transition,
-              duration: 15 + Math.random() * 20,
-              ease: [0.42, 0, 0.58, 1]
-            }}
-          />
-        ))}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-100/20 via-transparent to-transparent"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-100/20 via-transparent to-transparent"></div>
+        
+        {/* Animated gradient orbs */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-teal-200/30 to-emerald-300/30 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }}></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-blue-200/30 to-cyan-300/30 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }}></div>
+        
+        {/* Grid pattern overlay */}
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMwLTkuOTQtOC4wNi0xOC0xOC0xOCIgc3Ryb2tlPSIjMTRiOGE2IiBzdHJva2Utb3BhY2l0eT0iLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L2c+PC9zdmc+')] opacity-40"></div>
       </div>
 
-      <main className="relative z-10 p-4 md:p-8 max-w-7xl mx-auto">
-        {/* Enhanced Hero Section */}
-        <motion.section
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-white/90 via-white/80 to-teal-50/70 border border-teal-100/50 shadow-2xl mb-16 min-h-[600px] backdrop-blur-sm"
-        >
-          {/* Background Elements */}
-          <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-[0.02] bg-cover"></div>
-          <div className="absolute top-0 right-0 w-96 h-96 bg-teal-300/10 rounded-full -translate-y-48 translate-x-48"></div>
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-300/10 rounded-full translate-y-48 -translate-x-48"></div>
+      <main className="relative z-10 p-4 md:p-8 lg:p-12 max-w-[1600px] mx-auto">
+        {/* Premium Hero Section */}
+        <section className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-white/95 via-white/90 to-teal-50/80 border border-white/60 shadow-2xl mb-24 backdrop-blur-xl">
+          {/* Sophisticated background pattern */}
+          <div className="absolute inset-0 opacity-[0.03]">
+            <div className="absolute inset-0" style={{
+              backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 35px, #14b8a6 35px, #14b8a6 36px)`
+            }}></div>
+          </div>
           
-          <div className="relative z-10 p-8 md:p-12 h-full flex flex-col justify-center">
-            <motion.div 
-              variants={itemVariants}
-              className="flex items-center gap-6 mb-8 flex-wrap"
-            >
-              <motion.div 
-                whileHover={{ scale: 1.05, rotate: 5 }}
-                className="p-4 bg-white/80 rounded-2xl shadow-lg border border-teal-100/50 backdrop-blur-sm"
-              >
-                <Leaf className="w-12 h-12 text-teal-600" />
-              </motion.div>
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-to-bl from-teal-400/10 via-emerald-400/5 to-transparent rounded-full blur-3xl"></div>
+          
+          <div className="relative z-10 p-8 md:p-16 lg:p-20">
+            {/* Logo & Brand */}
+            <div className="flex items-center gap-6 mb-12">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-3xl blur-xl opacity-50"></div>
+                <div className="relative p-5 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-3xl shadow-2xl">
+                  <Leaf className="w-14 h-14 text-white" />
+                </div>
+              </div>
               <div>
-                <h1 className="text-4xl md:text-6xl font-black text-gray-900 mb-3 tracking-tight">
-                  Eco<span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Manage</span>
+                <h1 className="text-5xl md:text-7xl font-black mb-2">
+                  <span className="text-slate-900">Eco</span>
+                  <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Manage</span>
                 </h1>
-                <p className="text-lg md:text-xl text-gray-600 font-light max-w-2xl">
-                  Intelligent waste management solutions powered by AI and IoT technology
+                <p className="text-lg md:text-xl text-slate-600 font-light tracking-wide">
+                  Next-Generation Waste Intelligence Platform
                 </p>
               </div>
-            </motion.div>
-            
-            <div className="grid lg:grid-cols-2 gap-8 items-center mt-4">
-              <motion.div 
-                variants={itemVariants}
-                className="space-y-6"
-              >
-                <div className="flex items-center gap-3 text-gray-700">
-                  <div className="w-3 h-3 bg-teal-500 rounded-full animate-pulse"></div>
-                  <span className="text-lg font-medium">Live Environmental Impact Dashboard</span>
-                </div>
-                <div className="bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg backdrop-blur-sm">
-                  <div className="grid grid-cols-2 gap-6">
-                    <StatCard 
-                      icon="♻️" 
-                      label="Kg Recycled" 
-                      value={`${Math.floor(counters.wasteProcessed).toLocaleString()}+`} 
-                      color="text-emerald-600"
-                      change="+12%"
-                    />
-                    <StatCard 
-                      icon="👥" 
-                      label="Active Users" 
-                      value={`${Math.floor(counters.communitiesServed).toLocaleString()}+`} 
-                      color="text-teal-600"
-                      change="+8%"
-                    />
-                    <StatCard 
-                      icon="🌍" 
-                      label="CO₂ Reduction" 
-                      value={`${Math.floor(counters.co2Saved).toLocaleString()}kg`} 
-                      color="text-cyan-600"
-                      change="+5%"
-                    />
-                    <StatCard 
-                      icon="🌱" 
-                      label="Trees Planted" 
-                      value={`${Math.floor(counters.treesPlanted).toLocaleString()}+`} 
-                      color="text-green-600"
-                      change="+15%"
-                    />
-                  </div>
-                </div>
-              </motion.div>
-              
-              <motion.div 
-                variants={itemVariants}
-                className="bg-white/80 rounded-2xl p-8 border border-teal-100/50 shadow-lg backdrop-blur-sm"
-              >
-                <p className="text-gray-700 text-lg leading-relaxed mb-6">
-                  Join thousands of environmentally conscious users in our mission to transform waste management. 
-                  Our platform leverages cutting-edge technology to create sustainable communities.
-                </p>
-                <div className="flex gap-4 flex-col sm:flex-row">
-                  <motion.button
-                    onClick={() => handleNavigation('/delivery-collection')}
-                    whileHover={{ scale: 1.02, boxShadow: "0 10px 25px -5px rgba(5, 150, 105, 0.3)" }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-6 py-4 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
-                  >
-                    Get Started
-                  </motion.button>
-                  <motion.button
-                    onClick={() => handleNavigation('/marketplace')}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex-1 border border-teal-200 text-teal-700 px-6 py-4 rounded-xl font-semibold text-center bg-white/50 hover:bg-teal-50 transition-all flex items-center justify-center space-x-2"
-                  >
-                    <Zap className="w-4 h-4" />
-                    <span>Explore Marketplace</span>
-                  </motion.button>
-                </div>
-              </motion.div>
             </div>
-          </div>
-        </motion.section>
-
-        {/* Core Values Section */}
-        <section className="mb-20">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            className="text-center mb-12"
-          >
-            <motion.h2 
-              variants={itemVariants}
-              className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
-            >
-              Our <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Core Values</span>
-            </motion.h2>
-            <motion.p 
-              variants={itemVariants}
-              className="text-lg text-gray-600 max-w-2xl mx-auto"
-            >
-              Guiding every decision and action we take towards a sustainable future
-            </motion.p>
-          </motion.div>
-
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-          >
-            {coreValues.map((value, index) => (
-              <motion.div
-                key={index}
-                variants={itemVariants}
-                whileHover={{ y: -8, scale: 1.02 }}
-                className="group relative bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg hover:shadow-xl backdrop-blur-sm transition-all duration-300"
-              >
-                <div className={`p-3 rounded-xl bg-opacity-10 ${value.color.replace('text-', 'bg-')} mb-4 w-fit group-hover:scale-110 transition-transform`}>
-                  {value.icon}
+            
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              {/* Left: Live Impact Dashboard */}
+              <div className="space-y-8">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="w-3 h-3 bg-teal-500 rounded-full animate-ping absolute"></div>
+                    <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                  </div>
+                  <span className="text-base font-semibold text-slate-700 tracking-wide uppercase text-sm">Live Environmental Impact</span>
                 </div>
                 
-                <h3 className="text-lg font-bold text-gray-800 mb-3 group-hover:text-teal-600 transition-colors">
-                  {value.title}
-                </h3>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  {value.description}
-                </p>
-              </motion.div>
-            ))}
-          </motion.div>
+                <div className="relative">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-teal-400 to-emerald-500 rounded-3xl blur opacity-20"></div>
+                  <div className="relative bg-white rounded-3xl p-8 shadow-xl border border-teal-100/50">
+                    <div className="grid grid-cols-2 gap-6">
+                      {achievements.map((stat, i) => (
+                        <div key={i} className="text-center group cursor-pointer">
+                          <div className="text-3xl mb-3 transform group-hover:scale-110 transition-transform">{stat.icon}</div>
+                          <div className={`text-3xl md:text-4xl font-black ${stat.color} mb-1`}>
+                            {stat.value}
+                          </div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{stat.unit}</div>
+                          <div className="text-xs text-slate-600">{stat.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200/50">
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                  <span className="text-sm text-slate-700"><strong className="text-emerald-600">+18%</strong> increase in recycling efficiency this quarter</span>
+                </div>
+              </div>
+              
+              {/* Right: Value Proposition */}
+              <div className="space-y-8">
+                <div>
+                  <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-4 py-2 rounded-full text-sm font-bold mb-6 shadow-lg">
+                    <Star className="w-4 h-4" />
+                    Industry Leading Platform
+                  </div>
+                  
+                  <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-6 leading-tight">
+                    Transform Your Environmental Impact with <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Intelligent Solutions</span>
+                  </h2>
+                  
+                  <p className="text-lg text-slate-600 leading-relaxed mb-8">
+                    Join the world's most advanced waste management ecosystem. Our AI-powered platform combines IoT sensors, blockchain verification, and predictive analytics to deliver unprecedented sustainability results.
+                  </p>
+                  
+                  <div className="space-y-4 mb-8">
+                    {[
+                      { icon: CheckCircle, text: "Real-time impact tracking & analytics", color: "text-teal-600" },
+                      { icon: CheckCircle, text: "Blockchain-verified sustainability credits", color: "text-emerald-600" },
+                      { icon: CheckCircle, text: "AI-optimized collection routing", color: "text-green-600" }
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 group">
+                        <item.icon className={`w-5 h-5 ${item.color} group-hover:scale-110 transition-transform`} />
+                        <span className="text-slate-700">{item.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex gap-4 flex-col sm:flex-row">
+                  <button className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-8 py-5 rounded-2xl font-bold shadow-2xl shadow-teal-500/30 hover:shadow-teal-500/50 hover:scale-[1.02] transition-all duration-300 flex items-center justify-center gap-2 group">
+                    <span>Get Started Free</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  <button className="flex-1 border-2 border-teal-600 text-teal-700 px-8 py-5 rounded-2xl font-bold hover:bg-teal-50 transition-all duration-300 flex items-center justify-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    <span>Watch Demo</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
-        {/* Enhanced Feature Buttons Section */}
-        <section className="mb-20">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            className="text-center mb-12"
-          >
-            <motion.h2 
-              variants={itemVariants}
-              className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
-            >
-              Platform <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Features</span>
-            </motion.h2>
-            <motion.p 
-              variants={itemVariants}
-              className="text-lg text-gray-600 max-w-2xl mx-auto"
-            >
-              Comprehensive tools designed for efficient waste management and environmental impact tracking
-            </motion.p>
-          </motion.div>
+        {/* Core Values - Premium Design */}
+        <section className="mb-24">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 bg-teal-50 text-teal-700 px-4 py-2 rounded-full text-sm font-bold mb-6">
+              <Sparkles className="w-4 h-4" />
+              What Drives Us
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6">
+              Built on <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Unwavering Principles</span>
+            </h2>
+            <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
+              Four pillars that guide every decision, innovation, and partnership we forge
+            </p>
+          </div>
 
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {coreValues.map((value, index) => {
+              const Icon = value.icon;
+              return (
+                <div
+                  key={index}
+                  className="group relative bg-white rounded-3xl p-8 border border-slate-200/50 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div className="relative">
+                    <div className={`p-4 rounded-2xl ${value.bgColor} mb-6 w-fit group-hover:scale-110 transition-transform`}>
+                      <Icon className={`w-8 h-8 ${value.color}`} />
+                    </div>
+                    
+                    <div className="flex items-start justify-between mb-4">
+                      <h3 className="text-xl font-bold text-slate-900 group-hover:text-teal-600 transition-colors">
+                        {value.title}
+                      </h3>
+                      <span className={`text-2xl font-black ${value.color}`}>{value.metric}</span>
+                    </div>
+                    
+                    <p className="text-slate-600 leading-relaxed">
+                      {value.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Platform Features - Modern Grid */}
+        <section className="mb-24">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 bg-purple-50 text-purple-700 px-4 py-2 rounded-full text-sm font-bold mb-6">
+              <Zap className="w-4 h-4" />
+              Platform Capabilities
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6">
+              Powerful <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Features</span> at Your Fingertips
+            </h2>
+            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+              Comprehensive suite of tools designed for maximum efficiency and environmental impact
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {featureButtons.map((button, index) => {
               const Icon = button.icon;
               return (
-                <motion.button
+                <button
                   key={index}
-                  variants={itemVariants}
-                  onClick={() => handleNavigation(button.href)}
-                  whileHover={{ y: -8, scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="group relative bg-white/80 rounded-2xl p-6 border border-teal-100/50 shadow-lg hover:shadow-xl backdrop-blur-sm transition-all duration-300 text-left"
+                  className="group relative bg-white rounded-3xl p-8 border border-slate-200/50 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 text-left overflow-hidden"
                 >
-                  <div className="relative mb-4">
-                    <div className="absolute inset-0 bg-gradient-to-r from-teal-400 to-emerald-400 rounded-xl blur opacity-20 group-hover:opacity-30 transition-opacity"></div>
-                    <div className={`relative p-3 bg-gradient-to-br ${button.color} rounded-xl shadow-lg group-hover:shadow-xl transition-all w-fit`}>
-                      <Icon className="w-6 h-6 text-white" />
+                  <div className={`absolute inset-0 bg-gradient-to-br ${button.color} opacity-0 group-hover:opacity-5 transition-opacity`}></div>
+                  
+                  <div className="relative">
+                    <div className={`relative mb-6`}>
+                      <div className={`absolute inset-0 bg-gradient-to-br ${button.color} rounded-2xl blur-lg opacity-30 group-hover:opacity-50 transition-opacity ${button.shadowColor}`}></div>
+                      <div className={`relative p-4 bg-gradient-to-br ${button.color} rounded-2xl shadow-lg`}>
+                        <Icon className="w-7 h-7 text-white" />
+                      </div>
                     </div>
+                    
+                    <h3 className="font-bold text-slate-900 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:from-teal-600 group-hover:to-emerald-600 transition-all mb-3 text-lg">
+                      {button.name}
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed">{button.description}</p>
+                    
+                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-1 transition-all mt-4" />
                   </div>
-                  <h3 className="font-semibold text-gray-800 group-hover:text-teal-700 transition-colors mb-2 text-sm">
-                    {button.name}
-                  </h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">{button.description}</p>
-                </motion.button>
+                </button>
               );
             })}
-          </motion.div>
+          </div>
         </section>
 
-        {/* Enhanced Features Section */}
-        <section className="mb-20">
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            className="text-center mb-16"
-          >
-            <motion.h2 
-              variants={itemVariants}
-              className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
-            >
-              Our <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Technology</span>
-            </motion.h2>
-            <motion.p 
-              variants={itemVariants}
-              className="text-lg text-gray-600 max-w-2xl mx-auto"
-            >
-              Advanced solutions driving the future of sustainable waste management
-            </motion.p>
-          </motion.div>
+        {/* Technology Features */}
+        <section className="mb-24">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full text-sm font-bold mb-6">
+              <Activity className="w-4 h-4" />
+              Advanced Technology
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6">
+              <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Cutting-Edge</span> Infrastructure
+            </h2>
+            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+              Enterprise-grade systems powering the future of sustainable waste management
+            </p>
+          </div>
           
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature, index) => {
               const Icon = feature.icon;
               const isActive = activeFeature === index;
               
               return (
-                <motion.div
+                <div
                   key={index}
-                  variants={itemVariants}
-                  whileHover={{ y: -8, scale: 1.02 }}
-                  className={`relative overflow-hidden rounded-2xl p-6 cursor-pointer transition-all duration-500 bg-gradient-to-br ${feature.color} border border-white/50 shadow-lg hover:shadow-xl ${
-                    isActive ? 'ring-2 ring-teal-200/50' : ''
+                  className={`relative overflow-hidden rounded-3xl p-8 transition-all duration-700 border ${
+                    isActive 
+                      ? 'bg-gradient-to-br ' + feature.gradient + ' border-white/50 shadow-2xl scale-[1.02]' 
+                      : 'bg-white border-slate-200/50 shadow-lg hover:shadow-xl'
                   }`}
                 >
-                  <AnimatePresence>
-                    {isActive && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-gradient-to-r from-teal-400/10 to-emerald-400/10"
-                      />
-                    )}
-                  </AnimatePresence>
+                  {isActive && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent"></div>
+                  )}
                   
-                  <div className="relative z-10">
-                    <div className={`mb-6 p-3 rounded-xl bg-gradient-to-br ${feature.bgColor} shadow-lg w-fit ${
-                      isActive ? 'scale-110' : ''
-                    } transition-transform duration-300`}>
-                      <Icon className="w-6 h-6 text-white" />
+                  <div className="relative">
+                    <div className={`mb-8 p-4 rounded-2xl bg-gradient-to-br ${feature.color} shadow-xl w-fit transform ${isActive ? 'scale-110' : 'scale-100'} transition-transform duration-500`}>
+                      <Icon className="w-8 h-8 text-white" />
                     </div>
                     
-                    <h3 className="text-lg font-bold mb-3 text-gray-900">
+                    <h3 className="text-xl font-bold mb-4 text-slate-900">
                       {feature.title}
                     </h3>
                     
-                    <p className="text-gray-600 text-sm leading-relaxed">
+                    <p className="text-slate-600 leading-relaxed mb-6">
                       {feature.description}
                     </p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        </section>
-
-        {/* Enhanced Waste Types Section */}
-        <section className="mb-20">
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            className="bg-white/80 rounded-3xl shadow-xl p-8 md:p-12 border border-teal-100/50 backdrop-blur-sm"
-          >
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
-              <motion.div 
-                variants={itemVariants}
-                className="min-w-[280px]"
-              >
-                <div className="relative">
-                  <div className="absolute -inset-4 bg-gradient-to-r from-teal-200/30 to-emerald-200/30 rounded-3xl blur-2xl"></div>
-                  <div className="relative bg-white/90 rounded-3xl p-8 border border-teal-100/50 shadow-lg backdrop-blur-sm">
-                    <div className="grid grid-cols-2 gap-4">
-                      {wasteTypes.map((waste, index) => (
-                        <motion.button
-                          key={index}
-                          variants={itemVariants}
-                          whileHover={{ y: -5, scale: 1.02 }}
-                          onClick={() => handleNavigation('/waste-tracking')}
-                          className="group bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-100/50 text-left"
-                        >
-                          <div className={`mb-3 p-3 rounded-lg bg-gradient-to-br ${waste.color} text-gray-800 text-center shadow-sm`}>
-                            <div className="text-2xl mb-1">{waste.icon}</div>
-                            <div className="text-xs font-semibold opacity-75">{waste.count} tons</div>
-                          </div>
-                          <h3 className="font-bold text-gray-900 group-hover:text-teal-600 transition-colors text-sm mb-1">
-                            {waste.name}
-                          </h3>
-                          <p className="text-xs text-gray-600 mb-2">{waste.subtitle}</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-amber-600 font-semibold">{waste.points} pts/kg</span>
-                            <Sparkles className="w-3 h-3 text-amber-500" />
-                          </div>
-                        </motion.button>
-                      ))}
+                    
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${
+                      isActive ? 'bg-white/80 text-slate-800' : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full"></div>
+                      {feature.stat}
                     </div>
                   </div>
                 </div>
-              </motion.div>
-              
-              <motion.div 
-                variants={itemVariants}
-                className="space-y-6"
-              >
-                <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-100 to-emerald-100 text-teal-800 px-4 py-2 rounded-full text-sm font-semibold">
-                  <Recycle className="w-4 h-4" />
-                  Advanced Material Recovery
-                </div>
-                
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
-                  Sustainable <span className="bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 bg-clip-text text-transparent">Material Processing</span>
-                </h2>
-                
-                <p className="text-lg text-gray-600 leading-relaxed">
-                  Our intelligent sorting system utilizes machine learning and computer vision to achieve 
-                  unprecedented recycling efficiency. Each material stream follows optimized pathways for maximum environmental benefit.
-                </p>
-                
-                <div className="space-y-3">
-                  {[
-                    "AI-powered contamination detection system",
-                    "Automated quality assessment and sorting",
-                    "Optimized processing pathways for each material"
-                  ].map((item, index) => (
-                    <motion.div 
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Material Processing - Premium Showcase */}
+        <section className="mb-24">
+          <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-white via-white to-slate-50 border border-slate-200/50 shadow-2xl p-12 lg:p-16">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-teal-100/30 to-transparent rounded-full blur-3xl"></div>
+            
+            <div className="relative grid lg:grid-cols-2 gap-16 items-center">
+              {/* Material Grid */}
+              <div className="order-2 lg:order-1">
+                <div className="grid grid-cols-2 gap-6">
+                  {wasteTypes.map((waste, index) => (
+                    <button
                       key={index}
-                      variants={itemVariants}
-                      whileHover={{ x: 5 }}
-                      className="flex items-center gap-3"
+                      onMouseEnter={() => setHoveredWaste(index)}
+                      onMouseLeave={() => setHoveredWaste(null)}
+                      className={`relative group bg-white rounded-3xl p-6 border-2 transition-all duration-500 ${
+                        hoveredWaste === index 
+                          ? 'border-teal-400 shadow-2xl -translate-y-2 scale-[1.02]' 
+                          : 'border-slate-200 shadow-lg hover:border-teal-300'
+                      }`}
                     >
-                      <div className={`w-2 h-2 rounded-full bg-gradient-to-r ${
-                        index === 0 ? 'from-teal-500 to-teal-400' : 
-                        index === 1 ? 'from-emerald-500 to-emerald-400' : 'from-green-500 to-green-400'
-                      }`}></div>
-                      <span className="text-gray-700">{item}</span>
-                    </motion.div>
+                      <div className={`absolute inset-0 bg-gradient-to-br ${waste.bgGradient} rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity`}></div>
+                      
+                      <div className="relative">
+                        <div className={`mb-4 p-4 rounded-2xl bg-gradient-to-br ${waste.gradient} shadow-lg text-center transform group-hover:scale-110 transition-transform`}>
+                          <div className="text-3xl mb-2">{waste.icon}</div>
+                          <div className="text-white text-xs font-bold">{waste.count} tons</div>
+                        </div>
+                        
+                        <h3 className="font-bold text-slate-900 mb-2 text-sm">
+                          {waste.name}
+                        </h3>
+                        <p className="text-xs text-slate-600 mb-4">{waste.subtitle}</p>
+                        
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                          <div className="text-xs">
+                            <span className="text-slate-500">Efficiency:</span>
+                            <span className="font-bold text-teal-600 ml-1">{waste.efficiency}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            <span className="text-xs font-bold text-amber-600">{waste.points} pts/kg</span>
+                          </div>
+                        </div>
+                        
+                        <div className="text-xs text-emerald-600 font-semibold mt-2">
+                          {waste.trend} this month
+                        </div>
+                      </div>
+                    </button>
                   ))}
                 </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleNavigation('/recycling-centers')}
-                  className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all mt-4"
-                >
-                  Find Recycling Centers
-                </motion.button>
-              </motion.div>
-            </div>
-          </motion.div>
-        </section>
-
-        {/* Mission Call to Action */}
-        <section className="mb-20">
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            variants={containerVariants}
-            className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-teal-600 to-emerald-700 text-white"
-          >
-            <div className="absolute inset-0 opacity-20">
-              <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-xl animate-pulse"></div>
-              <div className="absolute bottom-20 right-20 w-24 h-24 bg-teal-300 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }}></div>
-            </div>
-            
-            <div className="relative z-10 p-12 text-center">
-              <Sparkles className="w-12 h-12 text-yellow-300 mx-auto mb-6 animate-pulse" />
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Make a Difference?</h2>
-              <p className="text-lg text-teal-100 mb-8 font-light leading-relaxed max-w-2xl mx-auto">
-                Join thousands of environmental champions already making a difference. Together, we can build a greener, more sustainable future.
-              </p>
+              </div>
               
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <motion.button
-                  onClick={() => handleNavigation('/delivery-collection')}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="group bg-white text-teal-700 px-8 py-4 rounded-full font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center space-x-2"
-                >
-                  <span>Start Recycling Today</span>
-                  <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </motion.button>
-                <motion.button
-                  onClick={() => handleNavigation('/about')}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="group border-2 border-white text-white px-8 py-4 rounded-full font-semibold backdrop-blur-sm bg-white/10 hover:bg-white hover:text-teal-700 transition-all"
-                >
-                  Learn About Our Mission
-                </motion.button>
+              {/* Content */}
+              <div className="order-1 lg:order-2 space-y-8">
+                <div>
+                  <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-4 py-2 rounded-full text-sm font-bold mb-6 shadow-lg">
+                    <Recycle className="w-4 h-4" />
+                    Advanced Processing
+                  </div>
+                  
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-6 leading-tight">
+                    Precision <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Material Recovery</span> Systems
+                  </h2>
+                  
+                  <p className="text-lg text-slate-600 leading-relaxed mb-8">
+                    Our state-of-the-art facilities employ machine learning algorithms and computer vision technology to achieve industry-leading recovery rates. Each material stream is meticulously processed for maximum environmental benefit and circular economy integration.
+                  </p>
+                  
+                  <div className="space-y-4 mb-8">
+                    {[
+                      { text: "AI-powered contamination detection achieving 99.8% accuracy", icon: Shield },
+                      { text: "Automated quality assessment with real-time analytics", icon: BarChart3 },
+                      { text: "Optimized processing pathways reducing energy consumption by 35%", icon: Zap }
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-start gap-4 group">
+                        <div className="p-2 rounded-xl bg-teal-50 group-hover:bg-teal-100 transition-colors">
+                          <item.icon className="w-5 h-5 text-teal-600" />
+                        </div>
+                        <span className="text-slate-700 flex-1">{item.text}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-teal-500/30 hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 flex items-center gap-2 group">
+                    <span>Explore Our Facilities</span>
+                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
 
-        {/* Footer Section */}
-        <motion.footer
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center py-8 border-t border-teal-100/50"
-        >
-          <p className="text-gray-600">
-            © 2024 EcoManage. Transforming waste management through innovation.
+        {/* Call to Action - Premium */}
+        <section className="mb-24">
+          <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-slate-900 via-teal-900 to-emerald-900 text-white">
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-10 left-10 w-64 h-64 bg-teal-400 rounded-full blur-3xl animate-pulse"></div>
+              <div className="absolute bottom-20 right-20 w-48 h-48 bg-emerald-400 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-cyan-400 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+            </div>
+            
+            <div className="relative z-10 p-16 text-center">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-teal-400 to-emerald-500 shadow-2xl mb-8 animate-pulse">
+                <Crown className="w-10 h-10 text-white" />
+              </div>
+              
+              <h2 className="text-4xl md:text-5xl font-black mb-6 leading-tight">
+                Ready to Lead the <span className="text-transparent bg-gradient-to-r from-teal-300 to-emerald-300 bg-clip-text">Sustainability Revolution?</span>
+              </h2>
+              
+              <p className="text-xl text-teal-100 mb-10 max-w-3xl mx-auto leading-relaxed">
+                Join thousands of organizations and individuals making measurable environmental impact. Start your journey towards a sustainable future today.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
+                <button className="group bg-white text-slate-900 px-10 py-5 rounded-2xl font-bold shadow-2xl hover:shadow-white/20 hover:scale-[1.02] transition-all duration-300 flex items-center gap-3">
+                  <span>Start Your Free Trial</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
+                <button className="group border-2 border-white/30 text-white px-10 py-5 rounded-2xl font-bold backdrop-blur-sm bg-white/10 hover:bg-white hover:text-slate-900 transition-all duration-300">
+                  Schedule a Demo
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-center gap-8 text-sm">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <span className="text-teal-100">No credit card required</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <span className="text-teal-100">Cancel anytime</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <span className="text-teal-100">24/7 support</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="text-center py-12 border-t border-slate-200">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="p-2 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl">
+              <Leaf className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-xl font-bold text-slate-900">EcoManage</span>
+          </div>
+          <p className="text-slate-600 mb-2">
+            © 2024 EcoManage. Pioneering sustainable waste management through innovation.
           </p>
-        </motion.footer>
+          <p className="text-sm text-slate-500">
+            ISO 14001 Certified | Carbon Neutral Operations | B Corp Pending
+          </p>
+        </footer>
       </main>
     </div>
   );

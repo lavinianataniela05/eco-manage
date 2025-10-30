@@ -21,7 +21,7 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
-import { db, auth } from '@/firebase/config'
+import { db, auth } from '@/firebase/config';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -217,6 +217,7 @@ export default function ProfilePage() {
   // Listen to auth state changes - UPDATED dengan subscription
   useEffect(() => {
     let unsubscribePoints: (() => void) | undefined;
+    let unsubscribeActivities: (() => void) | undefined;
     let authTimeout: NodeJS.Timeout;
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -230,7 +231,6 @@ export default function ProfilePage() {
           
           // Load other data in parallel
           await Promise.all([
-            loadUserActivities(user.uid),
             loadUserOrders(user.uid),
             loadUserCollections(user.uid)
           ]);
@@ -252,6 +252,9 @@ export default function ProfilePage() {
               }));
             }
           });
+
+          // Set up activities listener
+          unsubscribeActivities = await loadUserActivities(user.uid);
 
         } else {
           console.log('No user, redirecting to login');
@@ -279,6 +282,9 @@ export default function ProfilePage() {
       if (unsubscribePoints) {
         unsubscribePoints();
       }
+      if (unsubscribeActivities) {
+        unsubscribeActivities();
+      }
     };
   }, [router]);
 
@@ -289,17 +295,29 @@ export default function ProfilePage() {
       const userDoc = await getDoc(doc(db, 'users', userId));
       
       if (userDoc.exists()) {
-        const userData = userDoc.data() as UserData;
+        const userData = userDoc.data();
         console.log('User data loaded:', userData);
         
         // Check if user has completed profile (has name, phone, address)
         const hasCompletedProfile = userData.name && userData.phone && userData.address;
         
         // Gunakan data dari Firestore, fallback ke auth data jika tidak ada
-        const updatedUserData = {
-          ...userData,
+        const updatedUserData: UserData = {
           name: userData.name || currentUser?.displayName || "",
           email: userData.email || currentUser?.email || "",
+          phone: userData.phone || "",
+          address: userData.address || "",
+          memberSince: userData.memberSince || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+          points: userData.points || 0,
+          level: userData.level || "Eco Starter",
+          completedPickups: userData.completedPickups || 0,
+          scheduledPickups: userData.scheduledPickups || 0,
+          carbonOffset: userData.carbonOffset || 0,
+          favoriteCategory: userData.favoriteCategory || 'home',
+          inventory: userData.inventory || [],
+          totalOrders: userData.totalOrders || 0,
+          totalSpent: userData.totalSpent || 0,
+          totalRecycling: userData.totalRecycling || 0,
           subscription: userData.subscription || {
             tier: null,
             status: 'inactive',
@@ -372,7 +390,6 @@ export default function ProfilePage() {
           email: currentUser.email || ""
         }));
       }
-      setLoading(false);
     }
   };
 
@@ -386,7 +403,7 @@ export default function ProfilePage() {
     isNewUserRef.current = isNewUser;
     loadingRef.current = loading;
     hasShownPopupRef.current = hasShownPopup;
-  });
+  }, [isNewUser, loading, hasShownPopup]);
 
   useEffect(() => {
     if (isNewUserRef.current && !loadingRef.current && !hasShownPopupRef.current) {
@@ -401,7 +418,7 @@ export default function ProfilePage() {
   }, [isNewUser, loading, hasShownPopup]);
 
   // Load user activities dengan proper error handling
-  const loadUserActivities = async (userId: string) => {
+  const loadUserActivities = async (userId: string): Promise<(() => void) | undefined> => {
     setActivitiesLoading(true);
     try {
       console.log('Loading activities for:', userId);
@@ -431,6 +448,7 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error setting up activities listener:', error);
       loadActivitiesFallback(userId);
+      return undefined;
     }
   };
 
@@ -585,15 +603,31 @@ export default function ProfilePage() {
     if (!currentUser) return;
 
     try {
-      const userData: UserData = {
-        ...user,
-        ...editForm,
-        email: currentUser.email || editForm.email
+      const userData: Partial<UserData> = {
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone,
+        address: editForm.address,
+        memberSince: user.memberSince,
+        points: user.points,
+        level: user.level,
+        completedPickups: user.completedPickups,
+        scheduledPickups: user.scheduledPickups,
+        carbonOffset: user.carbonOffset,
+        favoriteCategory: user.favoriteCategory,
+        inventory: user.inventory,
+        totalOrders: user.totalOrders,
+        totalSpent: user.totalSpent,
+        totalRecycling: user.totalRecycling,
+        subscription: user.subscription
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), userData, { merge: true });
       
-      setUser(userData);
+      setUser(prev => ({
+        ...prev,
+        ...userData
+      }));
       setIsNewUser(false);
       setShowProfilePopup(false);
 
@@ -636,7 +670,7 @@ export default function ProfilePage() {
 
       // Update user data in Firestore
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        points: user.points - reward.points,
+        points: increment(-reward.points),
         inventory: arrayUnion(inventoryItem)
       });
 
@@ -666,6 +700,9 @@ export default function ProfilePage() {
     if (!currentUser) return;
 
     try {
+      const itemToRemove = user.inventory.find(item => item.id === itemId);
+      if (!itemToRemove) return;
+
       const updatedInventory = user.inventory.filter(item => item.id !== itemId);
       
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -1022,132 +1059,377 @@ export default function ProfilePage() {
   );
 
   // Profile Popup Component
-  const ProfilePopup = () => (
-    <AnimatePresence>
-      {showProfilePopup && (
+  // const ProfilePopup = () => (
+  //   <AnimatePresence>
+  //     {showProfilePopup && (
+  //       <motion.div
+  //         initial={{ opacity: 0 }}
+  //         animate={{ opacity: 1 }}
+  //         exit={{ opacity: 0 }}
+  //         className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+  //         onClick={() => setShowProfilePopup(false)}
+  //       >
+  //         <motion.div
+  //           initial={{ scale: 0.9, opacity: 0 }}
+  //           animate={{ scale: 1, opacity: 1 }}
+  //           exit={{ scale: 0.9, opacity: 0 }}
+  //           className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+  //           onClick={(e) => e.stopPropagation()}
+  //         >
+  //           <div className="p-6">
+  //             <div className="flex justify-between items-center mb-6">
+  //               <h2 className="text-xl font-bold text-gray-800">
+  //                 {isNewUser ? "Complete Your Profile" : "Edit Profile"}
+  //               </h2>
+  //               <button
+  //                 onClick={() => setShowProfilePopup(false)}
+  //                 className="text-gray-400 hover:text-gray-600 transition-colors"
+  //               >
+  //                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  //                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  //                 </svg>
+  //               </button>
+  //             </div>
+
+  //             {isNewUser && (
+  //               <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+  //                 <div className="flex items-center">
+  //                   <div className="p-2 bg-blue-500 rounded-lg mr-3">
+  //                     <FiStar className="w-4 h-4 text-white" />
+  //                   </div>
+  //                   <div>
+  //                     <p className="text-blue-800 font-medium text-sm">Complete your profile to earn 50 bonus points!</p>
+  //                   </div>
+  //                 </div>
+  //               </div>
+  //             )}
+
+  //             <form onSubmit={handleEditSubmit} className="space-y-4">
+  //               <div>
+  //                 <label className="block text-sm font-medium text-gray-700 mb-1">
+  //                   Full Name *
+  //                 </label>
+  //                 <input
+  //                   type="text"
+  //                   value={editForm.name}
+  //                   onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+  //                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+  //                   placeholder="Enter your full name"
+  //                   required
+  //                 />
+  //               </div>
+
+  //               <div>
+  //                 <label className="block text-sm font-medium text-gray-700 mb-1">
+  //                   Email
+  //                 </label>
+  //                 <input
+  //                   type="email"
+  //                   value={editForm.email}
+  //                   onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+  //                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-50"
+  //                   placeholder="Enter your email"
+  //                   required
+  //                   disabled
+  //                 />
+  //                 <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+  //               </div>
+
+  //               <div>
+  //                 <label className="block text-sm font-medium text-gray-700 mb-1">
+  //                   Phone Number *
+  //                 </label>
+  //                 <input
+  //                   type="tel"
+  //                   value={editForm.phone}
+  //                   onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+  //                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+  //                   placeholder="Enter your phone number"
+  //                   required
+  //                 />
+  //               </div>
+
+  //               <div>
+  //                 <label className="block text-sm font-medium text-gray-700 mb-1">
+  //                   Address *
+  //                 </label>
+  //                 <textarea
+  //                   value={editForm.address}
+  //                   onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+  //                   rows={3}
+  //                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+  //                   placeholder="Enter your complete address"
+  //                   required
+  //                 />
+  //               </div>
+
+  //               <div className="flex space-x-3 pt-4">
+  //                 <button
+  //                   type="button"
+  //                   onClick={() => setShowProfilePopup(false)}
+  //                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+  //                 >
+  //                   {isNewUser ? "Skip for now" : "Cancel"}
+  //                 </button>
+  //                 <button
+  //                   type="submit"
+  //                   className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors"
+  //                 >
+  //                   {isNewUser ? "Complete Profile" : "Save Changes"}
+  //                 </button>
+  //               </div>
+  //             </form>
+  //           </div>
+  //         </motion.div>
+  //       </motion.div>
+  //     )}
+  //   </AnimatePresence>
+  // );
+  // Profile Popup Component yang lebih modern
+const ProfilePopup = () => (
+  <AnimatePresence>
+    {showProfilePopup && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+        onClick={() => setShowProfilePopup(false)}
+      >
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-          onClick={() => setShowProfilePopup(false)}
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
         >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-800">
+          {/* Header dengan gradient */}
+          <div className="bg-gradient-to-r from-green-500 to-teal-500 p-6 text-white">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold">
                   {isNewUser ? "Complete Your Profile" : "Edit Profile"}
                 </h2>
-                <button
-                  onClick={() => setShowProfilePopup(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <p className="text-green-100 text-sm mt-1">
+                  {isNewUser 
+                    ? "Complete your profile to unlock all features" 
+                    : "Update your personal information"
+                  }
+                </p>
+              </div>
+              <button
+                onClick={() => setShowProfilePopup(false)}
+                className="text-white hover:text-green-100 transition-colors p-2 rounded-full hover:bg-white/10"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Bonus Points Info untuk new user */}
+          {isNewUser && (
+            <div className="mx-6 -mt-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-sm">
+                <div className="flex items-center">
+                  <div className="p-2 bg-amber-500 rounded-lg mr-3">
+                    <FiStar className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-amber-800 font-semibold text-sm">Complete your profile</p>
+                    <p className="text-amber-600 text-xs">Get 50 bonus points instantly!</p>
+                  </div>
+                  <div className="ml-auto bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    +50
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="p-6">
+            <form onSubmit={handleEditSubmit} className="space-y-5">
+              {/* Profile Picture Section */}
+              <div className="flex flex-col items-center mb-6">
+                <div className="relative">
+                  <motion.div 
+                    whileHover={{ scale: 1.05 }}
+                    className="w-20 h-20 rounded-full bg-gradient-to-br from-green-100 to-cyan-100 overflow-hidden border-4 border-white shadow-lg"
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                      <FiUser className="w-10 h-10" />
+                    </div>
+                  </motion.div>
+                  <button
+                    type="button"
+                    className="absolute bottom-0 right-0 bg-green-500 text-white p-1.5 rounded-full shadow-lg hover:bg-green-600 transition-colors"
+                  >
+                    <FiEdit className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-gray-500 text-sm mt-2">Click to upload photo</p>
               </div>
 
-              {isNewUser && (
-                <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="flex items-center">
-                    <div className="p-2 bg-blue-500 rounded-lg mr-3">
-                      <FiStar className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-blue-800 font-medium text-sm">Complete your profile to earn 50 bonus points!</p>
+              {/* Form Fields */}
+              <div className="space-y-4">
+                {/* Name Field */}
+                <div className="space-y-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700">
+                    <FiUser className="w-4 h-4 mr-2 text-gray-400" />
+                    Full Name
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      placeholder="Enter your full name"
+                      required
+                    />
+                    <FiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* Email Field */}
+                <div className="space-y-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700">
+                    <FiMail className="w-4 h-4 mr-2 text-gray-400" />
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-50 transition-all"
+                      placeholder="Enter your email"
+                      required
+                      disabled
+                    />
+                    <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">Locked</span>
                     </div>
                   </div>
+                  <p className="text-xs text-gray-500">Email cannot be changed for security reasons</p>
+                </div>
+
+                {/* Phone Field */}
+                <div className="space-y-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700">
+                    <FiPhone className="w-4 h-4 mr-2 text-gray-400" />
+                    Phone Number
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      placeholder="Enter your phone number"
+                      required
+                    />
+                    <FiPhone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* Address Field */}
+                <div className="space-y-2">
+                  <label className="flex items-center text-sm font-medium text-gray-700">
+                    <FiMapPin className="w-4 h-4 mr-2 text-gray-400" />
+                    Address
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <textarea
+                      value={editForm.address}
+                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none"
+                      placeholder="Enter your complete address for pickup services"
+                      required
+                    />
+                    <FiMapPin className="absolute left-3 top-4 text-gray-400 w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-gray-500">This address will be used for recycling pickups</p>
+                </div>
+              </div>
+
+              {/* Progress Bar untuk new user */}
+              {isNewUser && (
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex justify-between text-sm text-blue-800 mb-2">
+                    <span>Profile Completion</span>
+                    <span className="font-semibold">
+                      {(() => {
+                        const fields = [editForm.name, editForm.phone, editForm.address];
+                        const completed = fields.filter(field => field.trim().length > 0).length;
+                        return `${Math.round((completed / fields.length) * 100)}%`;
+                      })()}
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(() => {
+                        const fields = [editForm.name, editForm.phone, editForm.address];
+                        const completed = fields.filter(field => field.trim().length > 0).length;
+                        return (completed / fields.length) * 100;
+                      })()}%` }}
+                      className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500"
+                    />
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    Complete all required fields to get your bonus points
+                  </p>
                 </div>
               )}
 
-              <form onSubmit={handleEditSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Enter your full name"
-                    required
-                  />
-                </div>
+              {/* Action Buttons */}
+              <div className="flex space-x-3 pt-4">
+                <motion.button
+                  type="button"
+                  onClick={() => setShowProfilePopup(false)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                >
+                  {isNewUser ? "Maybe Later" : "Cancel"}
+                </motion.button>
+                <motion.button
+                  type="submit"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-xl hover:from-green-600 hover:to-teal-600 transition-all font-medium shadow-lg hover:shadow-xl"
+                >
+                  {isNewUser ? (
+                    <span className="flex items-center justify-center">
+                      Complete & Get Points
+                      <FiStar className="ml-2 w-4 h-4" />
+                    </span>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </motion.button>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-50"
-                    placeholder="Enter your email"
-                    required
-                    disabled
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Enter your phone number"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Address *
-                  </label>
-                  <textarea
-                    value={editForm.address}
-                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Enter your complete address"
-                    required
-                  />
-                </div>
-
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowProfilePopup(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    {isNewUser ? "Skip for now" : "Cancel"}
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 transition-colors"
-                  >
-                    {isNewUser ? "Complete Profile" : "Save Changes"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </motion.div>
+              {/* Security Note */}
+              <div className="text-center pt-4 border-t border-gray-200">
+                <p className="text-xs text-gray-500">
+                  🔒 Your information is secure and encrypted
+                </p>
+              </div>
+            </form>
+          </div>
         </motion.div>
-      )}
-    </AnimatePresence>
-  );
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
 
   if (loading) {
     return (
@@ -1203,13 +1485,21 @@ export default function ProfilePage() {
             )}
 
             {/* TOMBOL EDIT PROFILE */}
-            <button 
+            {/* <button 
               onClick={() => setShowProfilePopup(true)}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-full hover:from-green-600 hover:to-teal-600 transition-all shadow-md hover:shadow-lg"
             >
               <FiEdit className="mr-2" />
               {isNewUser ? "Complete Profile" : "Edit Profile"}
-            </button>
+            </button> */}
+            {/* // Ganti bagian tombol edit profile di header dengan ini: */}
+<button 
+  onClick={() => setShowProfilePopup(true)}
+  className="flex items-center px-5 py-2.5 bg-white text-gray-700 rounded-full hover:bg-gray-50 transition-all shadow-md hover:shadow-lg border border-gray-200 font-medium"
+>
+  <FiEdit className="mr-2 w-4 h-4" />
+  {isNewUser ? "Complete Profile" : "Edit Profile"}
+</button>
 
             <button 
               onClick={() => router.push('/marketplace')}
