@@ -209,8 +209,8 @@ export default function ModernDashboard() {
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        {/* <header className="flex items-center justify-between mb-12">
-          <div className="flex items-center space-x-4">
+        <header className="flex items-center justify-between mb-12">
+          {/* <div className="flex items-center space-x-4">
             <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-lg">
               <Leaf className="w-8 h-8 text-white" />
             </div>
@@ -226,8 +226,8 @@ export default function ModernDashboard() {
             <button className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all">
               Get Started
             </button>
-          </div>
-        </header> */}
+          </div> */}
+        </header>
 
         {/* Hero Section */}
         <section className="mb-16">
