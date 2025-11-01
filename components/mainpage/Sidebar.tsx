@@ -33,7 +33,7 @@ interface NavLink {
 const getNavLinks = (userSubscription: any): NavLink[] => [
   { name: 'Dashboard', path: '/dashboard', icon: <Gauge className="w-4 h-4" /> },
   { name: 'Marketplace', path: '/marketplace', icon: <Store className="w-4 h-4" />, badge: 'New' },
-  { name: 'Recycling Centers', path: '/recycling-centers', icon: <Recycle className="w-4 h-4" /> },
+  // { name: 'Recycling Centers', path: '/recycling-centers', icon: <Recycle className="w-4 h-4" /> },
   { name: 'Waste Tracking', path: '/waste-tracking', icon: <MapPin className="w-4 h-4" /> },
   { name: 'Collection', path: '/delivery-collection', icon: <Truck className="w-4 h-4" /> },
   { 
@@ -44,6 +44,7 @@ const getNavLinks = (userSubscription: any): NavLink[] => [
     showBadge: (userSub) => !userSub?.isActive || userSub?.tier !== 'pro'
   },
   { name: 'Profile', path: '/profile-reward', icon: <UserCircle2 className="w-4 h-4" /> },
+  { name: 'About Us', path: '/about', icon: <Info className="w-4 h-4" /> },
 ]
 
 export default function Sidebar() {

@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { MapPin, Recycle, ArrowRight, Search, Filter, Clock, Star, Phone, X, ChevronDown, Heart, Bookmark, ShoppingBag } from 'lucide-react'
+import { MapPin, Recycle, ArrowRight, Search, Filter, Clock, Star, Phone, X, ChevronDown, Heart, Bookmark, ShoppingBag, Sparkles, Crown } from 'lucide-react'
 import { useState, useMemo } from 'react'
 
 export default function RecyclingCenters() {
@@ -26,7 +26,8 @@ export default function RecyclingCenters() {
       isOpen: true,
       rewards: true,
       points: 150,
-      image: "/recycling-center-1.jpg"
+      image: "/recycling-center-1.jpg",
+      features: ["Eco Rewards", "Fast Processing", "Educational Tours"]
     },
     {
       id: 2,
@@ -41,7 +42,8 @@ export default function RecyclingCenters() {
       isOpen: false,
       rewards: false,
       points: 0,
-      image: "/recycling-center-2.jpg"
+      image: "/recycling-center-2.jpg",
+      features: ["Specialized Handling", "Certified Disposal"]
     },
     {
       id: 3,
@@ -56,7 +58,8 @@ export default function RecyclingCenters() {
       isOpen: true,
       rewards: true,
       points: 200,
-      image: "/recycling-center-3.jpg"
+      image: "/recycling-center-3.jpg",
+      features: ["24/7 Drop-off", "Community Events", "Eco Rewards"]
     },
     {
       id: 4,
@@ -71,7 +74,8 @@ export default function RecyclingCenters() {
       isOpen: true,
       rewards: true,
       points: 175,
-      image: "/recycling-center-4.jpg"
+      image: "/recycling-center-4.jpg",
+      features: ["Data Security", "Eco Rewards", "Tech Recycling"]
     },
     {
       id: 5,
@@ -86,7 +90,8 @@ export default function RecyclingCenters() {
       isOpen: true,
       rewards: true,
       points: 225,
-      image: "/recycling-center-5.jpg"
+      image: "/recycling-center-5.jpg",
+      features: ["High Points", "Eco Rewards", "Bulk Acceptance"]
     },
     {
       id: 6,
@@ -101,12 +106,24 @@ export default function RecyclingCenters() {
       isOpen: true,
       rewards: false,
       points: 0,
-      image: "/recycling-center-6.jpg"
+      image: "/recycling-center-6.jpg",
+      features: ["Construction Focus", "Material Reuse"]
     }
   ]
 
-  const materialTypes = ['all', 'general', 'electronics', 'specialty']
-  const sortOptions = ['distance', 'rating', 'name']
+  const materialTypes = [
+    { value: 'all', label: 'All Types', icon: '🔄' },
+    { value: 'general', label: 'General', icon: '♻️' },
+    { value: 'electronics', label: 'Electronics', icon: '💻' },
+    { value: 'specialty', label: 'Specialty', icon: '⚡' }
+  ]
+
+  const sortOptions = [
+    { value: 'distance', label: 'Distance' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'name', label: 'Name' },
+    { value: 'points', label: 'Points' }
+  ]
 
   const toggleFavorite = (id: number) => {
     setFavorites(prev => 
@@ -139,6 +156,8 @@ export default function RecyclingCenters() {
           return b.rating - a.rating
         case 'name':
           return a.name.localeCompare(b.name)
+        case 'points':
+          return b.points - a.points
         default:
           return 0
       }
@@ -155,83 +174,101 @@ export default function RecyclingCenters() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-25 to-sage-50" style={{background: 'linear-gradient(135deg, #f0f9f0 0%, #e8f5e8 50%, #f0f8f0 100%)'}}>
-      {/* Enhanced Hero Section with Points Display */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-green-100 via-emerald-75 to-sage-100" style={{background: 'linear-gradient(90deg, #dcf2dc 0%, #d4edda 50%, #e8f5e8 100%)'}}>
-        <div className="relative px-8 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50/80 via-green-50 to-teal-50/60">
+      {/* Enhanced Hero Section */}
+      <div className="relative bg-gradient-to-r from-emerald-500 to-teal-600 px-8 py-16 overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+        
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="max-w-6xl mx-auto text-center relative"
+        >
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="max-w-4xl mx-auto text-center"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl mb-6 border border-white/30"
           >
-            <div className="flex justify-center mb-4">
-              <div className="bg-white/40 backdrop-blur-sm p-3 rounded-full shadow-sm">
-                <Recycle className="w-8 h-8 text-green-600" />
+            <Recycle className="w-10 h-10 text-white" />
+          </motion.div>
+          
+          <h1 className="text-5xl font-bold text-white mb-4">
+            Eco Rewards Centers
+          </h1>
+          <p className="text-xl text-emerald-100 mb-8 max-w-2xl mx-auto leading-relaxed">
+            Discover recycling centers near you and earn Eco Points for sustainable choices
+          </p>
+          
+          {/* Enhanced Points Display */}
+          <motion.div 
+            whileHover={{ scale: 1.02 }}
+            className="inline-flex items-center bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl border border-white/30 cursor-pointer group"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center justify-center w-12 h-12 bg-white/30 rounded-xl">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-emerald-100 text-sm font-medium">Your Eco Points</p>
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl font-bold text-white">1,250</span>
+                  <Crown className="w-5 h-5 text-yellow-300" />
+                </div>
               </div>
             </div>
-            <h1 className="text-4xl font-semibold text-green-800 mb-3">
-              Eco Rewards Centers
-            </h1>
-            <p className="text-lg text-green-700/80 max-w-2xl mx-auto mb-6">
-              Recycle your items and earn points for sustainable products
-            </p>
-            
-            {/* Points Display */}
-            <motion.div 
-              whileHover={{ scale: 1.05 }}
-              className="inline-flex items-center bg-white/80 px-6 py-3 rounded-full shadow-sm border border-green-200 cursor-pointer"
-            >
-              <ShoppingBag className="w-5 h-5 text-green-600 mr-2" />
-              <span className="font-medium text-green-700">Your Eco Points: <span className="font-bold">1,250</span></span>
-            </motion.div>
           </motion.div>
-        </div>
+        </motion.div>
       </div>
 
-      <div className="px-6 py-8 max-w-6xl mx-auto">
-        {/* Enhanced Search and Filter Section */}
+      {/* Main Content */}
+      <div className="px-6 py-12 max-w-7xl mx-auto -mt-8 relative">
+        {/* Search and Filter Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-8 space-y-4"
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-6 mb-8"
         >
-          <div className="relative max-w-md mx-auto">
-            <div className="relative">
-              <Search 
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-green-500 w-5 h-5" 
-                aria-hidden="true"
-              />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search centers, materials, or rewards..."
-                className="w-full pl-12 pr-10 py-3 border border-green-300 rounded-xl focus:ring-2 focus:ring-green-200 focus:border-green-500 outline-none transition-all bg-white shadow-sm hover:shadow-md placeholder:text-gray-400 text-gray-700"
-                aria-label="Search recycling centers"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+          <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
+            {/* Search Bar */}
+            <div className="flex-1 w-full lg:max-w-md">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-emerald-500 w-5 h-5" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search centers, materials, or locations..."
+                  className="w-full pl-12 pr-10 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500 outline-none transition-all bg-white hover:border-emerald-300 placeholder:text-emerald-400/60 text-emerald-800"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-emerald-400 hover:text-emerald-600 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap gap-3 items-center justify-between">
+            {/* Filters and Sort */}
             <div className="flex flex-wrap gap-3 items-center">
+              {/* Filter Dropdown */}
               <div className="relative">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center px-4 py-2 bg-white/80 border border-green-200/60 text-green-700 rounded-lg hover:bg-green-50/80 transition-all"
+                  className="flex items-center px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all font-medium"
                 >
                   <Filter className="w-4 h-4 mr-2" />
-                  Filter: {selectedFilter === 'all' ? 'All Types' : selectedFilter.charAt(0).toUpperCase() + selectedFilter.slice(1)}
+                  {materialTypes.find(t => t.value === selectedFilter)?.label}
                   <ChevronDown className={`w-4 h-4 ml-2 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
                 </button>
                 
@@ -239,68 +276,71 @@ export default function RecyclingCenters() {
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-full left-0 mt-2 bg-white/95 backdrop-blur-sm border border-green-200/60 rounded-lg shadow-lg p-2 min-w-[200px] z-10"
+                    className="absolute top-full left-0 mt-2 bg-white border border-emerald-200 rounded-xl shadow-lg p-2 min-w-[200px] z-10"
                   >
                     {materialTypes.map(type => (
                       <button
-                        key={type}
+                        key={type.value}
                         onClick={() => {
-                          setSelectedFilter(type)
+                          setSelectedFilter(type.value)
                           setShowFilters(false)
                         }}
-                        className={`block w-full text-left px-3 py-2 rounded-md transition-colors ${
-                          selectedFilter === type 
-                            ? 'bg-green-100/80 text-green-800' 
-                            : 'hover:bg-green-50/80 text-green-700'
+                        className={`flex items-center w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                          selectedFilter === type.value 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : 'hover:bg-emerald-50 text-emerald-700'
                         }`}
                       >
-                        {type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1)}
+                        <span className="mr-2">{type.icon}</span>
+                        {type.label}
                       </button>
                     ))}
                   </motion.div>
                 )}
               </div>
 
+              {/* Sort Dropdown */}
               <div className="relative">
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="px-4 py-2 bg-white/80 border border-green-200/60 rounded-lg text-green-700 outline-none focus:ring-2 focus:ring-green-300/50"
+                  className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-200 font-medium appearance-none pr-10"
                 >
-                  <option value="distance">Sort by Distance</option>
-                  <option value="rating">Sort by Rating</option>
-                  <option value="name">Sort by Name</option>
+                  {sortOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      Sort by {option.label}
+                    </option>
+                  ))}
                 </select>
+                <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-emerald-500 pointer-events-none" />
               </div>
-            </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-green-600/80">
-                {filteredAndSortedCenters.length} center{filteredAndSortedCenters.length !== 1 ? 's' : ''} found
+              {/* Results Count */}
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-emerald-600 font-medium">
+                  {filteredAndSortedCenters.length} center{filteredAndSortedCenters.length !== 1 ? 's' : ''} found
+                </div>
               </div>
-              <button className="text-green-600 hover:text-green-700 transition-colors">
-                <Bookmark className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </motion.div>
 
-        {/* Results */}
+        {/* Centers Grid */}
         {filteredAndSortedCenters.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12"
+            className="text-center py-16 bg-white rounded-2xl shadow-sm border border-emerald-100"
           >
-            <Recycle className="w-16 h-16 text-green-300 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-green-700 mb-2">No centers found</h3>
-            <p className="text-green-600/70">Try adjusting your search or filter criteria</p>
+            <Recycle className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-emerald-800 mb-2">No centers found</h3>
+            <p className="text-emerald-600">Try adjusting your search or filter criteria</p>
           </motion.div>
         ) : (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
           >
             {filteredAndSortedCenters.map((center, index) => (
               <motion.div
@@ -308,84 +348,83 @@ export default function RecyclingCenters() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
-                whileHover={{ y: -4, scale: 1.01 }}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden border border-green-100/60 relative"
+                whileHover={{ y: -4 }}
+                className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-emerald-100 group"
               >
-                {/* Favorite Button */}
-                <button 
-                  onClick={() => toggleFavorite(center.id)}
-                  className={`absolute top-4 right-4 z-10 p-2 rounded-full transition-colors ${
-                    favorites.includes(center.id) 
-                      ? 'text-red-500 bg-white/90' 
-                      : 'text-gray-400 hover:text-red-500 bg-white/70 hover:bg-white/90'
-                  }`}
-                >
-                  <Heart 
-                    className={`w-5 h-5 ${favorites.includes(center.id) ? 'fill-current' : ''}`} 
-                  />
-                </button>
+                {/* Header with Image */}
+                <div className="relative h-48 bg-gradient-to-br from-emerald-400 to-teal-500 overflow-hidden">
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors"></div>
+                  <div className="absolute top-4 right-4 flex space-x-2">
+                    <button 
+                      onClick={() => toggleFavorite(center.id)}
+                      className={`p-2 rounded-full backdrop-blur-sm transition-all ${
+                        favorites.includes(center.id) 
+                          ? 'bg-red-500 text-white' 
+                          : 'bg-white/20 text-white hover:bg-white/30'
+                      }`}
+                    >
+                      <Heart className={`w-4 h-4 ${favorites.includes(center.id) ? 'fill-current' : ''}`} />
+                    </button>
+                    <button className="p-2 rounded-full backdrop-blur-sm bg-white/20 text-white hover:bg-white/30 transition-colors">
+                      <Bookmark className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  {/* Status Badge */}
+                  <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-sm font-semibold backdrop-blur-sm ${
+                    center.isOpen 
+                      ? 'bg-emerald-500 text-white' 
+                      : 'bg-red-500 text-white'
+                  }`}>
+                    {center.isOpen ? 'Open Now' : 'Closed'}
+                  </div>
 
-                {/* Center Image Placeholder */}
-                <div className="h-40 bg-gradient-to-r from-green-100 to-emerald-100 flex items-center justify-center">
-                  <Recycle className="w-12 h-12 text-green-500" />
+                  {/* Points Badge */}
+                  {center.rewards && (
+                    <div className="absolute bottom-4 left-4 flex items-center space-x-1 px-3 py-1 bg-yellow-400 rounded-full text-sm font-semibold text-emerald-900">
+                      <Sparkles className="w-3 h-3" />
+                      <span>+{center.points} pts</span>
+                    </div>
+                  )}
                 </div>
 
+                {/* Content */}
                 <div className="p-6">
-                  {/* Header */}
+                  {/* Title and Rating */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center">
-                      <div className="bg-green-100/80 p-3 rounded-xl mr-3">
-                        <Recycle className="w-6 h-6 text-green-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-green-800">{center.name}</h3>
-                        <div className="flex items-center text-green-600/80 text-sm">
-                          <MapPin className="w-3 h-3 mr-1" />
-                          <span>{center.distance} mi away</span>
-                        </div>
+                    <div>
+                      <h3 className="text-xl font-semibold text-emerald-900 mb-1">{center.name}</h3>
+                      <div className="flex items-center text-emerald-600">
+                        <MapPin className="w-4 h-4 mr-1" />
+                        <span className="text-sm">{center.distance} mi away</span>
                       </div>
                     </div>
-                    
-                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      center.isOpen 
-                        ? 'bg-green-100/80 text-green-700' 
-                        : 'bg-red-100/80 text-red-700'
-                    }`}>
-                      {center.isOpen ? 'Open' : 'Closed'}
+                    <div className="flex items-center bg-emerald-50 px-2 py-1 rounded-lg">
+                      <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
+                      <span className="text-sm font-semibold text-emerald-800">{center.rating}</span>
                     </div>
                   </div>
 
-                  {/* Rating and Points */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`w-4 h-4 ${
-                            i < Math.floor(center.rating) 
-                              ? 'text-yellow-400 fill-current' 
-                              : 'text-green-200'
-                          }`}
-                        />
-                      ))}
-                      <span className="text-green-700 ml-2 text-sm font-medium">{center.rating}</span>
-                    </div>
-
-                    {center.rewards && (
-                      <div className="flex items-center bg-green-50 px-2 py-1 rounded-full">
-                        <span className="text-green-700 text-xs font-medium">+{center.points} pts</span>
-                      </div>
-                    )}
+                  {/* Features */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {center.features?.map((feature, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-lg font-medium"
+                      >
+                        {feature}
+                      </span>
+                    ))}
                   </div>
 
                   {/* Materials */}
                   <div className="mb-4">
-                    <h4 className="text-sm font-medium text-green-800 mb-2">Accepts:</h4>
+                    <h4 className="text-sm font-semibold text-emerald-800 mb-2">Accepts:</h4>
                     <div className="flex flex-wrap gap-1">
-                      {center.accepts.map((item, itemIndex) => (
+                      {center.accepts.map((item, idx) => (
                         <span
-                          key={itemIndex}
-                          className="px-2 py-1 bg-green-50/80 text-green-700 text-xs rounded-lg border border-green-100/60"
+                          key={idx}
+                          className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-lg border border-emerald-200 font-medium"
                         >
                           {item}
                         </span>
@@ -394,32 +433,32 @@ export default function RecyclingCenters() {
                   </div>
 
                   {/* Details */}
-                  <div className="space-y-2 text-sm text-green-700/80">
+                  <div className="space-y-2 text-sm text-emerald-700">
                     <div className="flex items-center">
-                      <Clock className="w-4 h-4 mr-2 text-green-500" />
+                      <Clock className="w-4 h-4 mr-2 text-emerald-500" />
                       <span>{center.hours}</span>
                     </div>
                     <div className="flex items-start">
-                      <MapPin className="w-4 h-4 mr-2 text-green-500 mt-0.5 flex-shrink-0" />
-                      <span>{center.address}</span>
+                      <MapPin className="w-4 h-4 mr-2 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span className="leading-tight">{center.address}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="px-6 py-4 bg-green-25/40 border-t border-green-100/60 flex gap-2">
+                <div className="px-6 py-4 bg-emerald-50 border-t border-emerald-200 flex gap-3">
                   <button
                     onClick={() => handleCall(center.phone)}
-                    className="flex-1 flex items-center justify-center px-3 py-2 text-green-700 hover:text-green-800 hover:bg-white/60 rounded-lg transition-all text-sm font-medium"
+                    className="flex-1 flex items-center justify-center px-4 py-2 text-emerald-700 hover:text-emerald-800 hover:bg-white rounded-lg transition-all font-medium text-sm"
                   >
-                    <Phone className="w-4 h-4 mr-1" />
+                    <Phone className="w-4 h-4 mr-2" />
                     Call
                   </button>
                   <button
                     onClick={() => handleDirections(center.address)}
-                    className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600/90 text-white hover:bg-green-700 rounded-lg transition-all text-sm font-medium"
+                    className="flex-1 flex items-center justify-center px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg transition-all font-medium text-sm"
                   >
-                    <ArrowRight className="w-4 h-4 mr-1" />
+                    <ArrowRight className="w-4 h-4 mr-2" />
                     Directions
                   </button>
                 </div>
@@ -427,8 +466,6 @@ export default function RecyclingCenters() {
             ))}
           </motion.div>
         )}
-
-        
       </div>
     </div>
   )
