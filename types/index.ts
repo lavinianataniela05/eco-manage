@@ -3,19 +3,30 @@ export type SubscriptionTier = 'basic' | 'pro' | 'enterprise' | null;
 export type SubscriptionStatus = 'active' | 'inactive' | 'canceled' | 'trial';
 
 export interface User {
-  uid: string;
+  id: string;
   email: string;
-  displayName: string;
+  name: string;
+  photoURL?: string;
   points: number;
-  cart: CartItem[];
-  wishlist: string[];
   subscription: {
-    tier: SubscriptionTier;
-    status: SubscriptionStatus;
+    tier: 'basic' | 'pro' | 'premium';
+    status: 'active' | 'inactive' | 'canceled' | 'trial';
+    isActive: boolean;
     startDate: string;
     endDate: string;
-    isActive: boolean;
+    discountRate: number;
   };
+  wishlist: string[]; // product IDs
+  cart: [
+    {
+      productId: string,
+      quantity: number,
+      addedAt: Date
+    }
+  ],
+  createdAt: Date,
+  updatedAt: Date,
+  lastLogin: Date
 }
 
 export interface Product {
@@ -24,20 +35,22 @@ export interface Product {
   price: number;
   originalPrice: number;
   category: string;
-  condition: 'excellent' | 'good' | 'new';
+  condition: 'excellent' | 'good' | 'fair';
   rating: number;
   reviewCount: number;
   image: string;
   ecoScore: number;
   description: string;
-  seller: string;
-  delivery: string;
+  sellerId: string;
+  sellerName: string;
+  deliveryTime: string;
   tags: string[];
   stock: number;
-  status: 'active' | 'inactive';
-  subscriptionDiscount: number; // Discount for subscribed users
+  status: 'active' | 'inactive' | 'sold';
+  subscriptionDiscount: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
-
 export interface CartItem {
   productId: string;
   quantity: number;
@@ -47,16 +60,21 @@ export interface CartItem {
 export interface Order {
   id: string;
   userId: string;
-  items: CartItem[];
+  items: [
+    {
+      productId: string;
+      quantity: number;
+      addedAt: Date;
+    }
+  ],
   subtotal: number;
   discount: number;
-  subscriptionDiscount: number;
   deliveryFee: number;
   total: number;
   pointsEarned: number;
   paymentMethod: string;
-  status: 'pending' | 'paid' | 'shipped' | 'delivered';
-  createdAt: Date;
-  transactionId: string;
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'cancelled';
   subscriptionApplied: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
