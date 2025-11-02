@@ -39,7 +39,7 @@ import {
 import { db, auth } from '@/firebase/config'
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
-// Types (import dari file types di atas)
+// Types
 type Product = {
   id: string;
   name: string;
@@ -104,7 +104,134 @@ const CATEGORIES = [
 // Points calculation dengan bonus untuk subscriber
 const calculatePointsFromTransaction = (amount: number, isSubscribed: boolean): number => {
   const basePoints = Math.floor(amount / 10000);
-  return isSubscribed ? Math.floor(basePoints * 1.5) : basePoints; // 50% bonus points untuk subscriber
+  return isSubscribed ? Math.floor(basePoints * 1.5) : basePoints;
+};
+
+// Product Card Component
+const ProductCard = ({ 
+  product, 
+  onAddToCart, 
+  onToggleWishlist,
+  userSubscription,
+  calculateProductPrice 
+}: { 
+  product: Product;
+  onAddToCart: (productId: string) => void;
+  onToggleWishlist: (productId: string) => void;
+  userSubscription: UserSubscription | null;
+  calculateProductPrice: (product: Product) => number;
+}) => {
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const finalPrice = calculateProductPrice(product);
+  const hasSubscriptionDiscount = userSubscription?.isActive && finalPrice < product.price;
+  const productDiscount = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
+
+  const handleWishlist = () => {
+    setIsWishlisted(!isWishlisted);
+    onToggleWishlist(product.id);
+  };
+
+  return (
+    <div className="group relative bg-white rounded-2xl p-4 shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100">
+      {productDiscount > 0 && (
+        <div className="absolute top-4 left-4 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10">
+          -{productDiscount}%
+        </div>
+      )}
+      
+      {hasSubscriptionDiscount && (
+        <div className="absolute top-4 left-20 bg-purple-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10 flex items-center space-x-1">
+          <Crown className="w-3 h-3" />
+          <span>-20%</span>
+        </div>
+      )}
+      
+      <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10 flex items-center space-x-1">
+        <Leaf className="w-3 h-3" />
+        <span>{product.ecoScore}</span>
+      </div>
+      
+      <button
+        onClick={handleWishlist}
+        className={`absolute top-16 right-4 p-2 rounded-full transition-all duration-300 ${
+          isWishlisted 
+            ? 'bg-red-500 text-white' 
+            : 'bg-white/90 text-gray-600 hover:bg-red-50 hover:text-red-500'
+        }`}
+      >
+        <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-current' : ''}`} />
+      </button>
+
+      <div className="relative mb-4 overflow-hidden rounded-xl bg-gray-100 aspect-square">
+        <img 
+          src={product.image} 
+          alt={product.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-start justify-between">
+          <h3 className="font-semibold text-gray-800 line-clamp-2 flex-1">{product.name}</h3>
+        </div>
+        
+        <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
+        
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1">
+            <Star className="w-4 h-4 text-yellow-400 fill-current" />
+            <span className="text-sm font-semibold text-gray-800">{product.rating}</span>
+          </div>
+          <span className="text-sm text-gray-500">({product.reviewCount})</span>
+          <span className="text-sm text-gray-500">•</span>
+          <span className={`text-sm font-medium ${
+            product.condition === 'excellent' ? 'text-green-600' :
+            product.condition === 'good' ? 'text-blue-600' : 'text-gray-600'
+          }`}>
+            {product.condition}
+          </span>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-baseline space-x-2">
+            <span className="text-xl font-bold text-gray-800">Rp {finalPrice.toLocaleString()}</span>
+            {hasSubscriptionDiscount && (
+              <span className="text-sm text-gray-500 line-through">Rp {product.price.toLocaleString()}</span>
+            )}
+          </div>
+          {product.originalPrice > product.price && (
+            <span className="text-sm text-gray-500 line-through">Rp {product.originalPrice.toLocaleString()}</span>
+          )}
+        </div>
+
+        {hasSubscriptionDiscount && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+            <div className="flex items-center space-x-1 text-purple-700 text-xs">
+              <Crown className="w-3 h-3" />
+              <span className="font-semibold">Premium Discount Applied</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>{product.seller}</span>
+          <span>{product.delivery}</span>
+        </div>
+
+        <button
+          onClick={() => onAddToCart(product.id)}
+          disabled={product.stock < 1}
+          className={`w-full py-3 rounded-xl font-semibold transition-all duration-300 ${
+            product.stock < 1
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-teal-600 text-white hover:bg-teal-700 hover:shadow-lg transform hover:-translate-y-0.5'
+          }`}
+        >
+          {product.stock < 1 ? 'Out of Stock' : 'Add to Cart'}
+        </button>
+      </div>
+    </div>
+  );
 };
 
 export default function Marketplace() {
@@ -155,7 +282,7 @@ export default function Marketplace() {
         productsData.push({ 
           id: doc.id, 
           ...data,
-          subscriptionDiscount: data.subscriptionDiscount || 20 // Default 20% discount untuk subscriber
+          subscriptionDiscount: data.subscriptionDiscount || 20
         } as Product);
       });
       
@@ -488,7 +615,7 @@ export default function Marketplace() {
     return matchesSearch && matchesCategory;
   });
 
-  // Cart Sidebar Component dengan Subscription Discount
+  // Cart Sidebar Component
   const CartSidebar = () => (
     <div className={`fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform transition-transform duration-300 z-50 ${
       isCartOpen ? 'translate-x-0' : 'translate-x-full'
@@ -648,7 +775,7 @@ export default function Marketplace() {
     </div>
   );
 
-  // Checkout Modal Component dengan Subscription Discount
+  // Checkout Modal Component
   const CheckoutModal = () => (
     <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity ${
       isCheckoutOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -872,378 +999,212 @@ export default function Marketplace() {
     </div>
   );
 
-  // Product Card Component dengan Subscription Price
-  const ProductCard = ({ product, onAddToCart, onToggleWishlist }: any) => {
-    const [isWishlisted, setIsWishlisted] = useState(false);
-    const finalPrice = calculateProductPrice(product);
-    const hasSubscriptionDiscount = userSubscription?.isActive && finalPrice < product.price;
-    const productDiscount = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
-
-    const handleWishlist = () => {
-      setIsWishlisted(!isWishlisted);
-      onToggleWishlist(product.id);
-    };
-
-    return (
-      <div className="group relative bg-white rounded-2xl p-4 shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100">
-        {productDiscount > 0 && (
-          <div className="absolute top-4 left-4 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10">
-            -{productDiscount}%
-          </div>
-        )}
-        
-        {hasSubscriptionDiscount && (
-          <div className="absolute top-4 left-20 bg-purple-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10 flex items-center space-x-1">
-            <Crown className="w-3 h-3" />
-            <span>-20%</span>
-          </div>
-        )}
-        
-        <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10 flex items-center space-x-1">
-          <Leaf className="w-3 h-3" />
-          <span>{product.ecoScore}</span>
-        </div>
-        
-        <button
-          onClick={handleWishlist}
-          className={`absolute top-16 right-4 p-2 rounded-full transition-all duration-300 ${
-            isWishlisted 
-              ? 'bg-red-500 text-white' 
-              : 'bg-white/90 text-gray-600 hover:bg-red-50 hover:text-red-500'
-          }`}
-        >
-          <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-current' : ''}`} />
-        </button>
-
-        <div className="relative mb-4 overflow-hidden rounded-xl bg-gray-100 aspect-square">
-          <img 
-            src={product.image} 
-            alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-start justify-between">
-            <h3 className="font-semibold text-gray-800 line-clamp-2 flex-1">{product.name}</h3>
-          </div>
-          
-          <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
-          
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-1">
-              <Star className="w-4 h-4 text-yellow-400 fill-current" />
-              <span className="text-sm font-semibold text-gray-800">{product.rating}</span>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
+                <Recycle className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-gray-800">EcoMarket</span>
             </div>
-            <span className="text-sm text-gray-500">({product.reviewCount})</span>
-            <span className="text-sm text-gray-500">•</span>
-            <span className={`text-sm font-medium ${
-              product.condition === 'excellent' ? 'text-green-600' :
-              product.condition === 'good' ? 'text-blue-600' : 'text-gray-600'
-            }`}>
-              {product.condition}
-            </span>
-          </div>
 
-          <div className="space-y-1">
-            <div className="flex items-baseline space-x-2">
-              <span className="text-xl font-bold text-gray-800">Rp {finalPrice.toLocaleString()}</span>
-              {hasSubscriptionDiscount && (
-                <span className="text-sm text-gray-500 line-through">Rp {product.price.toLocaleString()}</span>
-              )}
-            </div>
-            {product.originalPrice > product.price && (
-              <span className="text-sm text-gray-500 line-through">Rp {product.originalPrice.toLocaleString()}</span>
-            )}
-          </div>
-
-          {hasSubscriptionDiscount && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-              <div className="flex items-center space-x-1 text-purple-700 text-xs">
-                <Crown className="w-3 h-3" />
-                <span className="font-semibold">Premium Discount Applied</span>
+            {/* Search Bar */}
+            <div className="flex-1 max-w-2xl mx-8">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Search for sustainable products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                />
               </div>
             </div>
-          )}
 
-          <div className="flex items-center justify-between text-sm text-gray-600">
-            <span>{product.seller}</span>
-            <span>{product.delivery}</span>
-          </div>
-
-          <div className="flex flex-wrap gap-1">
-            {product.tags.map((tag: string, index: number) => (
-              <span 
-                key={index}
-                className="px-2 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-medium"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          <button
-            onClick={() => onAddToCart(product.id)}
-            disabled={product.stock === 0}
-            className={`w-full py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center space-x-2 ${
-              product.stock === 0
-                ? 'bg-gray-400 text-white cursor-not-allowed'
-                : 'bg-teal-600 text-white hover:bg-teal-700'
-            }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>{product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}</span>
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading products...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50 overflow-hidden">
-      <CartSidebar />
-      <CheckoutModal />
-
-      {/* Floating Cart Button - Hanya ini yang tersisa dari navbar */}
-      <div className="fixed top-6 right-6 z-40">
-        {currentUser && (
-          <button
-            onClick={() => setIsCartOpen(true)}
-            className="relative bg-teal-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:bg-teal-700"
-          >
-            <ShoppingCart className="w-6 h-6" />
-            {cart.length > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold animate-pulse">
-                {cart.reduce((sum, item) => sum + item.quantity, 0)}
-              </span>
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* Hero Section dengan Highlight Subscription */}
-      <section className="relative py-20 bg-gradient-to-br from-teal-600 to-emerald-700 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-teal-400/30 to-transparent"></div>
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl"></div>
-        </div>
-        
-        <div className="relative max-w-7xl mx-auto px-6 text-center">
-          <div className="relative mb-8">
-            <div className="absolute inset-0 bg-gradient-to-r from-teal-400 to-emerald-400 rounded-full blur-2xl opacity-30 animate-pulse"></div>
-            <div className="relative p-6 bg-white/10 rounded-full backdrop-blur-lg border border-white/20 inline-block">
-              <Recycle className="w-16 h-16 text-white" />
-            </div>
-            <Sparkles className="absolute -top-2 -right-2 w-8 h-8 text-yellow-300 animate-spin" />
-          </div>
-          
-          <h1 className="text-5xl md:text-6xl font-bold mb-8 bg-gradient-to-r from-white via-teal-100 to-emerald-100 bg-clip-text text-transparent leading-tight">
-            Eco Marketplace
-          </h1>
-          
-          <p className="text-xl md:text-2xl text-teal-100 max-w-3xl mx-auto mb-12 font-light leading-relaxed">
-            Discover unique upcycled treasures, secondhand gems, and sustainable products. 
-            {userSubscription?.isActive ? (
-              <span className="font-semibold text-yellow-300"> Enjoy your 20% Premium discount!</span>
-            ) : (
-              <span> <span className="font-semibold text-yellow-300">Get 20% OFF</span> with Premium subscription!</span>
-            )}
-          </p>
-          
-          <div className="max-w-2xl mx-auto mb-8">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search for upcycled furniture, vintage fashion, sustainable products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl border-0 focus:ring-2 focus:ring-teal-500 text-gray-800 placeholder-gray-500"
-              />
-              <button className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-teal-600 text-white px-6 py-2 rounded-xl hover:bg-teal-700 transition-colors">
-                Search
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button 
-              onClick={handleSellItem}
-              className="group bg-white text-teal-700 px-8 py-4 rounded-full font-semibold hover:bg-teal-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2"
-            >
-              <span>Sell Your Items</span>
-              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
-            <button 
-              onClick={() => document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' })}
-              className="group border-2 border-white text-white px-8 py-4 rounded-full font-semibold backdrop-blur-sm bg-white/10 hover:bg-white hover:text-teal-700 transition-all duration-300"
-            >
-              Browse Products
-            </button>
-            {!userSubscription?.isActive && (
-              <button 
-                onClick={handleUpgradeSubscription}
-                className="group bg-yellow-400 text-gray-800 px-8 py-4 rounded-full font-semibold hover:bg-yellow-300 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2"
-              >
-                <Crown className="w-5 h-5" />
-                <span>Get Premium</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Categories Section */}
-      <section className="py-12 bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-wrap gap-4 justify-center">
-            {CATEGORIES.map((category, index) => (
+            {/* Right Actions */}
+            <div className="flex items-center space-x-4">
+              {/* Sell Item Button */}
               <button
-                key={index}
+                onClick={handleSellItem}
+                className="bg-gradient-to-r from-orange-500 to-pink-500 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
+              >
+                Sell Item
+              </button>
+
+              {/* Profile Button */}
+              <button
+                onClick={handleProfile}
+                className="flex items-center space-x-2 p-2 text-gray-600 hover:text-teal-600 transition-colors"
+              >
+                <User className="w-6 h-6" />
+                <span className="font-medium">Profile</span>
+              </button>
+
+              {/* Cart Button */}
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"
+              >
+                <ShoppingCart className="w-6 h-6" />
+                {cart.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-teal-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                  </span>
+                )}
+              </button>
+
+              {/* Subscription Status Badge */}
+              {userSubscription?.isActive && (
+                <div className="flex items-center space-x-1 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-3 py-1 rounded-full">
+                  <Crown className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Premium</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <div className="bg-gradient-to-r from-teal-500 to-emerald-600 rounded-2xl p-8 mb-8 text-white relative overflow-hidden">
+          <div className="relative z-10 max-w-2xl">
+            <h1 className="text-4xl font-bold mb-4">Sustainable Shopping Made Easy</h1>
+            <p className="text-lg mb-6 opacity-90">
+              Discover pre-loved items, reduce waste, and earn rewards with every purchase. 
+              {userSubscription?.isActive && (
+                <span className="block mt-2 font-semibold">
+                  🎉 Enjoy your 20% Premium discount on all items!
+                </span>
+              )}
+            </p>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Shield className="w-5 h-5" />
+                <span>Quality Verified</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Leaf className="w-5 h-5" />
+                <span>Eco-Friendly</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-5 h-5" />
+                <span>Rewards</span>
+              </div>
+            </div>
+          </div>
+          <div className="absolute right-8 top-1/2 transform -translate-y-1/2">
+            <div className="w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+          </div>
+        </div>
+
+        {/* Categories & Filters */}
+        <div className="flex items-center justify-between mb-8">
+          {/* Categories */}
+          <div className="flex items-center space-x-4 overflow-x-auto pb-2">
+            {CATEGORIES.map((category) => (
+              <button
+                key={category.name}
                 onClick={() => setSelectedCategory(category.name)}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                className={`flex items-center space-x-2 px-4 py-3 rounded-xl whitespace-nowrap transition-all ${
                   selectedCategory === category.name
                     ? 'bg-teal-600 text-white shadow-lg'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
                 }`}
               >
                 {category.icon}
-                <span>{category.name}</span>
+                <span className="font-medium">{category.name}</span>
                 <span className={`px-2 py-1 rounded-full text-xs ${
                   selectedCategory === category.name
                     ? 'bg-white/20 text-white'
-                    : 'bg-gray-200 text-gray-600'
+                    : 'bg-gray-100 text-gray-600'
                 }`}>
                   {category.count}
                 </span>
               </button>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* Products Section */}
-      <section id="products-section" className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-800 mb-2">
-                {selectedCategory === 'All' ? 'All Products' : selectedCategory}
-              </h2>
-              <p className="text-gray-600">
-                {filteredProducts.length} products found
-                {userSubscription?.isActive && (
-                  <span className="text-purple-600 font-semibold ml-2"> • Your 20% discount is applied!</span>
-                )}
-              </p>
-            </div>
+          {/* Sort & Filter */}
+          <div className="flex items-center space-x-4">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="popular">Most Popular</option>
+              <option value="newest">Newest First</option>
+              <option value="price-low">Price: Low to High</option>
+              <option value="price-high">Price: High to Low</option>
+              <option value="rating">Highest Rated</option>
+            </select>
             
-            <div className="flex items-center space-x-4 mt-4 lg:mt-0">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-white border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              >
-                <option value="popular">Most Popular</option>
-                <option value="newest">Newest First</option>
-                <option value="price-low">Price: Low to High</option>
-                <option value="price-high">Price: High to Low</option>
-                <option value="eco-score">Eco Score</option>
-              </select>
-              
-              <button className="bg-white border border-gray-300 rounded-xl px-4 py-2 hover:bg-gray-50 transition-colors flex items-center space-x-2">
-                <Filter className="w-4 h-4" />
-                <span>Filters</span>
-              </button>
-            </div>
+            <button className="flex items-center space-x-2 border border-gray-300 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors">
+              <Filter className="w-5 h-5" />
+              <span>Filters</span>
+            </button>
           </div>
-
-          {filteredProducts.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onAddToCart={handleAddToCart}
-                  onToggleWishlist={handleToggleWishlist}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Recycle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">No products found</h3>
-              <p className="text-gray-600">Try adjusting your search or filters</p>
-            </div>
-          )}
         </div>
-      </section>
 
-      {/* Benefits Section dengan Highlight Subscription Benefits */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="mb-16">
-            <h2 className="text-4xl font-bold text-gray-800 mb-4">Why Shop Eco?</h2>
-            <p className="text-lg text-gray-600 font-light">Every purchase makes a difference</p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: <Crown className="w-12 h-12" />,
-                title: 'Premium Benefits',
-                description: 'Get 20% discount on all purchases + 50% bonus points with Premium subscription',
-                highlight: true
-              },
-              {
-                icon: <Leaf className="w-12 h-12" />,
-                title: 'Reduce Waste',
-                description: 'Give pre-loved items a new life and keep them out of landfills'
-              },
-              {
-                icon: <Recycle className="w-12 h-12" />,
-                title: 'Support Circular Economy',
-                description: 'Promote sustainable consumption and production patterns'
-              }
-            ].map((benefit, index) => (
-              <div key={index} className={`text-center p-6 rounded-2xl transition-all duration-300 ${
-                benefit.highlight 
-                  ? 'bg-gradient-to-br from-purple-50 to-teal-50 border-2 border-purple-200 transform hover:-translate-y-2 shadow-lg' 
-                  : 'hover:shadow-md'
-              }`}>
-                <div className={`p-4 rounded-2xl w-fit mx-auto mb-6 ${
-                  benefit.highlight 
-                    ? 'bg-gradient-to-r from-purple-500 to-teal-500 text-white' 
-                    : 'bg-teal-100 text-teal-600'
-                }`}>
-                  {benefit.icon}
+        {/* Products Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl p-4 shadow-md animate-pulse">
+                <div className="bg-gray-200 rounded-xl aspect-square mb-4"></div>
+                <div className="space-y-3">
+                  <div className="h-4 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                  <div className="h-6 bg-gray-200 rounded w-1/2"></div>
                 </div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4">{benefit.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{benefit.description}</p>
-                {benefit.highlight && !userSubscription?.isActive && (
-                  <button
-                    onClick={handleUpgradeSubscription}
-                    className="mt-4 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-6 py-2 rounded-full font-semibold hover:from-purple-600 hover:to-teal-600 transition-all transform hover:scale-105"
-                  >
-                    Upgrade Now
-                  </button>
-                )}
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        ) : filteredProducts.length === 0 ? (
+          <div className="text-center py-12">
+            <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">No products found</h3>
+            <p className="text-gray-600">Try adjusting your search or filter criteria</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredProducts.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onAddToCart={handleAddToCart}
+                onToggleWishlist={handleToggleWishlist}
+                userSubscription={userSubscription}
+                calculateProductPrice={calculateProductPrice}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Cart Sidebar */}
+      <CartSidebar />
+
+      {/* Checkout Modal */}
+      <CheckoutModal />
+
+      {/* Overlay */}
+      {(isCartOpen || isCheckoutOpen) && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+          onClick={() => {
+            setIsCartOpen(false);
+            setIsCheckoutOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

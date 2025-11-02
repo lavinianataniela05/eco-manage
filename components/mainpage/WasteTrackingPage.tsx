@@ -1,12 +1,39 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useState, useEffect } from 'react'
-import { Gauge, Calendar, Package, Truck, Clock, CheckCircle, Leaf, Recycle, TrendingUp, Plus, Filter, Download, MapPin, User, Phone, X, ThumbsUp, MessageCircle, CheckSquare, Square, ShieldCheck } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc } from 'firebase/firestore'
+import { useState, useEffect, JSX } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore'
 import { db, auth } from '@/firebase/config'
 import { useAuthState } from 'react-firebase-hooks/auth'
+import { 
+  Gauge, 
+  Calendar, 
+  Package, 
+  Truck, 
+  Clock, 
+  CheckCircle, 
+  Leaf, 
+  Recycle, 
+  TrendingUp, 
+  Plus, 
+  Filter, 
+  Download, 
+  MapPin, 
+  User, 
+  Phone, 
+  X, 
+  ThumbsUp, 
+  MessageCircle, 
+  CheckSquare, 
+  Square, 
+  ShieldCheck,
+  ArrowLeft,
+  Star,
+  Mail,
+  CreditCard,
+  Navigation
+} from 'lucide-react'
 
 interface Collection {
   id: string
@@ -31,6 +58,10 @@ interface Collection {
   createdAt: any
   updatedAt: any
   userConfirmed: boolean
+  userRating: number | null
+  userFeedback: string | null
+  confirmedAt: any | null
+  userId?: string
 }
 
 // Random collector names for assignment
@@ -47,6 +78,12 @@ const COLLECTOR_NAMES = [
 
 export default function WasteTracking() {
   const [user] = useAuthState(auth)
+  const router = useRouter()
+  const params = useParams()
+  const collectionId = params.id as string
+
+  const [activeView, setActiveView] = useState<'list' | 'detail'>('list')
+  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null)
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,8 +98,7 @@ export default function WasteTracking() {
   const [rating, setRating] = useState(5)
   const [feedback, setFeedback] = useState('')
   const [selectMode, setSelectMode] = useState(false)
-
-  const router = useRouter()
+  const [submitting, setSubmitting] = useState(false)
 
   // Function to get random collector
   const getRandomCollector = () => {
@@ -70,31 +106,11 @@ export default function WasteTracking() {
     return COLLECTOR_NAMES[randomIndex]
   }
 
-  // Function to calculate collection status based on real-time
+  // Simplified status calculation - hanya untuk demo
   const calculateCollectionStatus = (collection: Collection) => {
-    try {
-      const pickupDate = collection.pickupDate?.toDate?.() || new Date(collection.pickupDate?.seconds * 1000)
-      const pickupTime = collection.pickupTime
-      const now = new Date()
-      
-      // Parse pickup time (format: "14:30")
-      const [hours, minutes] = pickupTime.split(':').map(Number)
-      const pickupDateTime = new Date(pickupDate)
-      pickupDateTime.setHours(hours, minutes, 0, 0)
-      
-      const timeDiff = now.getTime() - pickupDateTime.getTime()
-      const minutesDiff = timeDiff / (1000 * 60)
-      
-      // If current time has passed pickup time, mark as completed
-      if (minutesDiff > 0 && collection.status !== 'completed') {
-        return 'completed'
-      }
-      
-      return collection.status
-    } catch (error) {
-      console.error('Error calculating status:', error)
-      return collection.status
-    }
+    // Untuk demo, kita akan menggunakan status dari Firebase saja
+    // Tapi kita bisa menambahkan logic real-time di sini jika needed
+    return collection.status;
   }
 
   // Update collection status in Firebase
@@ -105,30 +121,28 @@ export default function WasteTracking() {
         ...updates,
         updatedAt: new Date()
       })
+      console.log('Collection updated successfully:', collectionId, updates)
     } catch (error) {
       console.error('Error updating collection:', error)
     }
   }
 
-  // Enhanced collections data with automatic status progression
+  // Enhanced collections data
   const enhancedCollections = collections.map(collection => {
     const newStatus = calculateCollectionStatus(collection)
     let collector = collection.collector
     let collectorPhone = collection.collectorPhone
     
-    // Assign random collector if not assigned and status is not completed
-    if (!collector && newStatus !== 'completed') {
+    // Assign random collector jika belum ada (untuk demo)
+    if (!collector && newStatus !== 'completed' && newStatus !== 'cancelled') {
       const randomCollector = getRandomCollector()
       collector = randomCollector.name
       collectorPhone = randomCollector.phone
-    }
-    
-    // Update status in Firebase if it changed
-    if (newStatus !== collection.status && collection.id) {
+      
+      // Auto update ke Firebase untuk collector assignment
       updateCollectionStatus(collection.id, { 
-        status: newStatus,
-        collector: collector || collection.collector,
-        collectorPhone: collectorPhone || collection.collectorPhone
+        collector: collector,
+        collectorPhone: collectorPhone
       })
     }
     
@@ -149,6 +163,8 @@ export default function WasteTracking() {
 
     const fetchCollections = async () => {
       try {
+        console.log('Fetching collections for user:', user.uid)
+        
         const q = query(
           collection(db, 'collections'),
           where('userId', '==', user.uid)
@@ -159,20 +175,46 @@ export default function WasteTracking() {
         
         querySnapshot.forEach((doc) => {
           const data = doc.data()
+          console.log('Raw collection data:', doc.id, data)
+          
           collectionsData.push({
             id: doc.id,
             userConfirmed: data.userConfirmed || false,
-            ...data
+            userRating: data.userRating || null,
+            userFeedback: data.userFeedback || null,
+            confirmedAt: data.confirmedAt || null,
+            pickupDate: data.pickupDate || new Date(),
+            pickupTime: data.pickupTime || '14:00',
+            address: data.address || 'Address not provided',
+            email: data.email || 'No email',
+            phone: data.phone || 'No phone',
+            pickupNotes: data.pickupNotes || '',
+            recyclingType: data.recyclingType || 'mixed',
+            recyclingTypeLabel: data.recyclingTypeLabel || 'Mixed Recycling',
+            bagsCount: data.bagsCount || 1,
+            weight: data.weight || 5,
+            distance: data.distance || 5,
+            totalCost: data.totalCost || 25000,
+            paymentMethod: data.paymentMethod || 'cash',
+            status: data.status || 'scheduled',
+            statusLabel: data.statusLabel || 'Scheduled',
+            collector: data.collector || null,
+            collectorPhone: data.collectorPhone || null,
+            notes: data.notes || '',
+            createdAt: data.createdAt || new Date(),
+            updatedAt: data.updatedAt || new Date(),
+            userId: data.userId
           } as Collection)
         })
 
         // Sort manually on client side - newest first
         collectionsData.sort((a, b) => {
-          const dateA = a.createdAt?.toDate?.() || new Date(a.pickupDate?.seconds * 1000) || new Date(0)
-          const dateB = b.createdAt?.toDate?.() || new Date(b.pickupDate?.seconds * 1000) || new Date(0)
+          const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0)
+          const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0)
           return dateB.getTime() - dateA.getTime()
         })
 
+        console.log('Processed collections:', collectionsData)
         setCollections(collectionsData)
         setLoading(false)
       } catch (error) {
@@ -183,13 +225,75 @@ export default function WasteTracking() {
 
     fetchCollections()
 
-    // Set up interval to update status every 30 seconds
-    const statusInterval = setInterval(() => {
-      setCollections(prev => [...prev]) // Force re-render to recalculate status
-    }, 30000)
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'collections'), where('userId', '==', user?.uid)),
+      (snapshot) => {
+        const updatedCollections: Collection[] = []
+        snapshot.forEach((doc) => {
+          const data = doc.data()
+          updatedCollections.push({
+            id: doc.id,
+            userConfirmed: data.userConfirmed || false,
+            userRating: data.userRating || null,
+            userFeedback: data.userFeedback || null,
+            confirmedAt: data.confirmedAt || null,
+            ...data
+          } as Collection)
+        })
+        setCollections(updatedCollections)
+      }
+    )
 
-    return () => clearInterval(statusInterval)
+    return () => unsubscribe()
   }, [user])
+
+  // Fetch single collection for detail view
+  useEffect(() => {
+    if (activeView === 'detail' && collectionId) {
+      const fetchCollectionDetail = async () => {
+        try {
+          const docRef = doc(db, 'collections', collectionId)
+          const docSnap = await getDoc(docRef)
+
+          if (docSnap.exists()) {
+            const data = docSnap.data()
+            setSelectedCollection({
+              id: docSnap.id,
+              userConfirmed: data.userConfirmed || false,
+              userRating: data.userRating || null,
+              userFeedback: data.userFeedback || null,
+              confirmedAt: data.confirmedAt || null,
+              pickupDate: data.pickupDate || new Date(),
+              pickupTime: data.pickupTime || '14:00',
+              address: data.address || 'Address not provided',
+              email: data.email || 'No email',
+              phone: data.phone || 'No phone',
+              pickupNotes: data.pickupNotes || '',
+              recyclingType: data.recyclingType || 'mixed',
+              recyclingTypeLabel: data.recyclingTypeLabel || 'Mixed Recycling',
+              bagsCount: data.bagsCount || 1,
+              weight: data.weight || 5,
+              distance: data.distance || 5,
+              totalCost: data.totalCost || 25000,
+              paymentMethod: data.paymentMethod || 'cash',
+              status: data.status || 'scheduled',
+              statusLabel: data.statusLabel || 'Scheduled',
+              collector: data.collector || null,
+              collectorPhone: data.collectorPhone || null,
+              notes: data.notes || '',
+              createdAt: data.createdAt || new Date(),
+              updatedAt: data.updatedAt || new Date(),
+            } as Collection)
+          }
+        } catch (error) {
+          console.error('Error fetching collection detail:', error)
+        }
+      }
+
+      fetchCollectionDetail()
+    }
+  }, [activeView, collectionId])
 
   // Selection handlers
   const toggleSelectAll = () => {
@@ -218,6 +322,47 @@ export default function WasteTracking() {
     setShowConfirmationModal(true)
   }
 
+  // Handle detail confirmation
+  const handleDetailConfirm = async () => {
+    if (!selectedCollection || submitting) return
+
+    setSubmitting(true)
+    try {
+      const collectionRef = doc(db, 'collections', selectedCollection.id)
+      await updateDoc(collectionRef, {
+        userConfirmed: true,
+        userRating: rating,
+        userFeedback: feedback,
+        confirmedAt: new Date(),
+        updatedAt: new Date()
+      })
+
+      // Update local state
+      setSelectedCollection(prev => prev ? {
+        ...prev,
+        userConfirmed: true,
+        userRating: rating,
+        userFeedback: feedback,
+        confirmedAt: new Date()
+      } : null)
+
+      // Update collections list
+      setCollections(prev => prev.map(item => 
+        item.id === selectedCollection.id
+          ? { ...item, userConfirmed: true, userRating: rating, userFeedback: feedback }
+          : item
+      ))
+
+      setShowConfirmationModal(false)
+      setSubmitting(false)
+      setRating(5)
+      setFeedback('')
+    } catch (error) {
+      console.error('Error confirming collection:', error)
+      setSubmitting(false)
+    }
+  }
+
   // Handle bulk confirmation
   const handleBulkConfirmation = () => {
     if (selectedCollections.length === 0) return
@@ -227,14 +372,16 @@ export default function WasteTracking() {
   const submitBulkConfirmation = async () => {
     if (selectedCollections.length === 0) return
 
+    setSubmitting(true)
     try {
       // Update all selected collections
       const updatePromises = selectedCollections.map(collectionId =>
-        updateCollectionStatus(collectionId, {
-          userConfirmed: true,
+        updateDoc(doc(db, 'collections', collectionId), {
+          userConfirmed: false,
           userRating: rating,
           userFeedback: feedback,
-          confirmedAt: new Date()
+          confirmedAt: new Date(),
+          updatedAt: new Date()
         })
       )
 
@@ -243,18 +390,36 @@ export default function WasteTracking() {
       // Update local state
       setCollections(prev => prev.map(item => 
         selectedCollections.includes(item.id)
-          ? { ...item, userConfirmed: true }
+          ? { ...item, userConfirmed: true, userRating: rating, userFeedback: feedback }
           : item
       ))
 
       setShowConfirmationModal(false)
       setSelectedCollections([])
       setSelectMode(false)
+      setSubmitting(false)
       setRating(5)
       setFeedback('')
     } catch (error) {
       console.error('Error confirming collections:', error)
+      setSubmitting(false)
     }
+  }
+
+  // View detail handler
+  const handleViewDetail = (collection: Collection) => {
+    setSelectedCollection(collection)
+    setActiveView('detail')
+    // Update URL without page reload
+    window.history.pushState({}, '', `/waste-tracking/${collection.id}`)
+  }
+
+  // Back to list handler
+  const handleBackToList = () => {
+    setActiveView('list')
+    setSelectedCollection(null)
+    // Update URL back to list
+    window.history.pushState({}, '', '/waste-tracking')
   }
 
   // Calculate stats from enhanced collections
@@ -265,7 +430,7 @@ export default function WasteTracking() {
   const stats = [
     { 
       name: "Total Collected", 
-      value: `${enhancedCollections.reduce((sum, item) => sum + item.weight, 0).toFixed(1)} kg`, 
+      value: `${enhancedCollections.reduce((sum, item) => sum + (item.weight || 0), 0).toFixed(1)} kg`, 
       icon: <Recycle className="w-5 h-5" />,
       change: `${enhancedCollections.filter(item => item.status === 'completed').length} pickups completed`,
       color: "text-green-600"
@@ -292,7 +457,7 @@ export default function WasteTracking() {
       let dateText = 'Date not available'
       let timeRemaining = ''
       try {
-        const itemDate = item.createdAt?.toDate?.() || new Date(item.pickupDate?.seconds * 1000)
+        const itemDate = item.pickupDate?.toDate?.() || new Date(item.pickupDate) || new Date()
         dateText = itemDate.toLocaleDateString('en-US', { 
           month: 'short', 
           day: 'numeric',
@@ -300,7 +465,7 @@ export default function WasteTracking() {
         })
         
         // Calculate time remaining
-        const pickupTime = item.pickupTime
+        const pickupTime = item.pickupTime || '14:00'
         const [hours, minutes] = pickupTime.split(':').map(Number)
         const pickupDateTime = new Date(itemDate)
         pickupDateTime.setHours(hours, minutes, 0, 0)
@@ -324,6 +489,7 @@ export default function WasteTracking() {
       }
 
       return {
+        id: item.id,
         date: dateText,
         time: item.pickupTime || 'Time not set',
         type: item.recyclingTypeLabel || 'Recycling',
@@ -422,6 +588,52 @@ export default function WasteTracking() {
     }
   }
 
+  const getRecyclingTypeInfo = (type: string) => {
+    const types: { [key: string]: { color: string; icon: JSX.Element; label: string } } = {
+      plastic: { 
+        color: 'text-blue-600 bg-blue-50', 
+        icon: <Recycle className="w-5 h-5" />,
+        label: 'Plastic Recycling'
+      },
+      paper: { 
+        color: 'text-amber-600 bg-amber-50', 
+        icon: <Package className="w-5 h-5" />,
+        label: 'Paper Recycling'
+      },
+      ewaste: { 
+        color: 'text-purple-600 bg-purple-50', 
+        icon: <Gauge className="w-5 h-5" />,
+        label: 'E-Waste Recycling'
+      },
+      glass: { 
+        color: 'text-cyan-600 bg-cyan-50', 
+        icon: <Package className="w-5 h-5" />,
+        label: 'Glass Recycling'
+      },
+      metal: { 
+        color: 'text-gray-600 bg-gray-50', 
+        icon: <Package className="w-5 h-5" />,
+        label: 'Metal Recycling'
+      },
+      mixed: { 
+        color: 'text-green-600 bg-green-50', 
+        icon: <Recycle className="w-5 h-5" />,
+        label: 'Mixed Recycling'
+      }
+    }
+    return types[type] || types.mixed
+  }
+
+  const getPaymentMethodInfo = (method: string) => {
+    const methods: { [key: string]: { label: string; color: string } } = {
+      cash: { label: 'Cash on Pickup', color: 'text-green-600 bg-green-50' },
+      transfer: { label: 'Bank Transfer', color: 'text-blue-600 bg-blue-50' },
+      card: { label: 'Credit Card', color: 'text-purple-600 bg-purple-50' },
+      ewallet: { label: 'E-Wallet', color: 'text-orange-600 bg-orange-50' }
+    }
+    return methods[method] || methods.cash
+  }
+
   const filteredCollections = enhancedCollections.filter(item => {
     if (filters.status && item.status !== filters.status) return false
     if (filters.wasteType && item.recyclingType !== filters.wasteType) return false
@@ -429,7 +641,7 @@ export default function WasteTracking() {
     if (filters.dateRange) {
       try {
         const today = new Date()
-        const itemDate = item.createdAt?.toDate?.() || new Date(item.pickupDate?.seconds * 1000)
+        const itemDate = item.pickupDate?.toDate?.() || new Date(item.pickupDate) || new Date()
         const diffTime = today.getTime() - itemDate.getTime()
         const diffDays = diffTime / (1000 * 60 * 60 * 24)
         
@@ -464,8 +676,583 @@ export default function WasteTracking() {
     )
   }
 
+  // Detail View
+  if (activeView === 'detail' && selectedCollection) {
+    const statusInfo = getStatusInfo(selectedCollection.status)
+    const typeInfo = getRecyclingTypeInfo(selectedCollection.recyclingType)
+    const paymentInfo = getPaymentMethodInfo(selectedCollection.paymentMethod)
+    const pickupDate = selectedCollection.pickupDate?.toDate?.() || new Date(selectedCollection.pickupDate) || new Date()
+    const createdAt = selectedCollection.createdAt?.toDate?.() || new Date(selectedCollection.createdAt) || new Date()
+    const confirmedAt = selectedCollection.confirmedAt?.toDate?.() || (selectedCollection.confirmedAt ? new Date(selectedCollection.confirmedAt) : null)
+
+    // Check if collection can be confirmed
+    const canConfirm = selectedCollection.status === 'completed' && !selectedCollection.userConfirmed
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-25 to-green-50">
+        <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+          
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <button
+                  onClick={handleBackToList}
+                  className="bg-white p-2 rounded-lg mr-4 shadow-sm hover:shadow-md transition-shadow border border-gray-200"
+                >
+                  <ArrowLeft className="w-5 h-5 text-gray-600" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-800">Collection Details</h1>
+                  <p className="text-gray-600 mt-1">Track your pickup information and confirm completion</p>
+                </div>
+              </div>
+              
+              {/* Confirmation Button - FIXED CONDITION */}
+              {canConfirm && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowConfirmationModal(true)}
+                  className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 flex items-center transition-all duration-200 shadow-md"
+                >
+                  <ShieldCheck className="w-5 h-5 mr-2" />
+                  Confirm Pickup
+                </motion.button>
+              )}
+            </div>
+          </motion.div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              
+              {/* Collection Card */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
+              >
+                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-green-50 to-green-25">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center">
+                      <div className={`p-3 rounded-xl mr-4 ${typeInfo.color}`}>
+                        {typeInfo.icon}
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-800">{selectedCollection.recyclingTypeLabel}</h2>
+                        <p className="text-gray-600">{typeInfo.label}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-gray-800">{selectedCollection.weight} kg</div>
+                      <div className="text-gray-500">Total Weight</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  
+                  {/* Status & Date */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center mb-2">
+                        <Calendar className="w-4 h-4 text-gray-500 mr-2" />
+                        <span className="text-sm font-medium text-gray-700">Pickup Date & Time</span>
+                      </div>
+                      <p className="text-lg font-semibold text-gray-800">
+                        {pickupDate.toLocaleDateString('en-US', { 
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                      <p className="text-gray-600 flex items-center mt-1">
+                        <Clock className="w-4 h-4 mr-1" />
+                        {selectedCollection.pickupTime}
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center mb-2">
+                        <CheckCircle className="w-4 h-4 text-gray-500 mr-2" />
+                        <span className="text-sm font-medium text-gray-700">Status</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className={`px-3 py-1.5 inline-flex items-center text-sm font-medium rounded-full border ${statusInfo.color}`}>
+                          <span className="mr-1.5">{statusInfo.icon}</span>
+                          {statusInfo.label}
+                        </span>
+                        {selectedCollection.userConfirmed && (
+                          <span className="px-2 py-1.5 inline-flex items-center text-xs font-medium rounded-full border border-green-200 bg-green-50 text-green-700">
+                            <ThumbsUp className="w-3 h-3 mr-1" />
+                            Confirmed
+                          </span>
+                        )}
+                      </div>
+                      {/* Debug info */}
+                      <div className="mt-2 text-xs text-gray-500">
+                        Can confirm: {canConfirm ? 'YES' : 'NO'} | 
+                        Status: {selectedCollection.status} | 
+                        UserConfirmed: {selectedCollection.userConfirmed ? 'YES' : 'NO'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Address & Contact */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center mb-2">
+                        <MapPin className="w-4 h-4 text-gray-500 mr-2" />
+                        <span className="text-sm font-medium text-gray-700">Pickup Address</span>
+                      </div>
+                      <p className="text-gray-800 font-medium">{selectedCollection.address}</p>
+                      {selectedCollection.pickupNotes && (
+                        <p className="text-sm text-gray-600 mt-2 bg-white p-2 rounded border">
+                          📝 {selectedCollection.pickupNotes}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center mb-2">
+                        <User className="w-4 h-4 text-gray-500 mr-2" />
+                        <span className="text-sm font-medium text-gray-700">Contact Information</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center text-gray-800">
+                          <Mail className="w-4 h-4 mr-2 text-gray-500" />
+                          <span className="text-sm">{selectedCollection.email}</span>
+                        </div>
+                        <div className="flex items-center text-gray-800">
+                          <Phone className="w-4 h-4 mr-2 text-gray-500" />
+                          <span className="text-sm">{selectedCollection.phone}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Collector Information */}
+                  {selectedCollection.collector && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
+                        <User className="w-5 h-5 mr-2" />
+                        Collector Assigned
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="font-medium text-blue-800">{selectedCollection.collector}</p>
+                          <p className="text-sm text-blue-600">Your Waste Collector</p>
+                        </div>
+                        {selectedCollection.collectorPhone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-2 text-blue-500" />
+                            <span className="text-sm text-blue-800">{selectedCollection.collectorPhone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Collection Details */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                      <Package className="w-5 h-5 mr-2 text-green-600" />
+                      Collection Details
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-800">{selectedCollection.bagsCount}</div>
+                        <div className="text-sm text-gray-600">Bags</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-800">{selectedCollection.weight}</div>
+                        <div className="text-sm text-gray-600">Weight (kg)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-800">{selectedCollection.distance}</div>
+                        <div className="text-sm text-gray-600">Distance (km)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">Rp {selectedCollection.totalCost?.toLocaleString()}</div>
+                        <div className="text-sm text-gray-600">Total Cost</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Information */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                      <CreditCard className="w-5 h-5 mr-2 text-green-600" />
+                      Payment Information
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <span className={`px-3 py-1.5 inline-flex items-center text-sm font-medium rounded-full ${paymentInfo.color}`}>
+                        {paymentInfo.label}
+                      </span>
+                      <span className="text-lg font-bold text-gray-800">
+                        Rp {selectedCollection.totalCost?.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* User Confirmation & Review */}
+                  {selectedCollection.userConfirmed && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-green-50 border border-green-200 rounded-lg p-4"
+                    >
+                      <h3 className="text-lg font-semibold text-green-800 mb-3 flex items-center">
+                        <ThumbsUp className="w-5 h-5 mr-2" />
+                        Your Confirmation & Review
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center">
+                          <div className="flex mr-4">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-5 h-5 ${
+                                  star <= (selectedCollection.userRating || 0)
+                                    ? 'text-yellow-400 fill-current'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm text-gray-600">
+                            Rated {selectedCollection.userRating}/5
+                          </span>
+                        </div>
+                        {selectedCollection.userFeedback && (
+                          <div className="bg-white rounded-lg p-3 border">
+                            <div className="flex items-start">
+                              <MessageCircle className="w-4 h-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                              <p className="text-gray-700 text-sm">{selectedCollection.userFeedback}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500">
+                          Confirmed on {confirmedAt?.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Environmental Impact */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-6 text-white shadow-md"
+              >
+                <div className="flex items-center mb-4">
+                  <div className="bg-white/20 p-2 rounded-lg mr-3">
+                    <Leaf className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold">Environmental Impact</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold">{(selectedCollection.weight * 0.46).toFixed(1)} kg</div>
+                    <div className="text-green-100 text-sm">CO₂ Prevented</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{selectedCollection.weight} kg</div>
+                    <div className="text-green-100 text-sm">Waste Recycled</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{(selectedCollection.weight * 4.2).toFixed(1)} L</div>
+                    <div className="text-green-100 text-sm">Water Saved</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{(selectedCollection.weight * 3.7).toFixed(1)} kWh</div>
+                    <div className="text-green-100 text-sm">Energy Saved</div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              
+              {/* Quick Actions */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
+              >
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
+                <div className="space-y-3">
+                  {canConfirm && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowConfirmationModal(true)}
+                      className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 flex items-center justify-center transition-all duration-200 shadow-md"
+                    >
+                      <ShieldCheck className="w-5 h-5 mr-2" />
+                      Confirm Pickup
+                    </motion.button>
+                  )}
+                  
+                  {selectedCollection.collectorPhone && (
+                    <a 
+                      href={`https://wa.me/${selectedCollection.collectorPhone.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full border border-green-600 text-green-600 py-3 rounded-lg hover:bg-green-50 flex items-center justify-center transition-colors"
+                    >
+                      <MessageCircle className="w-5 h-5 mr-2" />
+                      Contact Collector
+                    </a>
+                  )}
+                  
+                  <button className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors">
+                    <Calendar className="w-5 h-5 mr-2" />
+                    Reschedule
+                  </button>
+
+                  <button className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors">
+                    <Navigation className="w-5 h-5 mr-2" />
+                    Track Location
+                  </button>
+                </div>
+              </motion.div>
+
+              {/* Collection Timeline */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
+              >
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Collection Timeline</h3>
+                <div className="space-y-4">
+                  <div className="flex items-start">
+                    <div className="bg-green-100 p-1 rounded-full mr-3 mt-1">
+                      <div className="bg-green-600 w-2 h-2 rounded-full"></div>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">Collection Scheduled</p>
+                      <p className="text-sm text-gray-600">{createdAt.toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  
+                  {selectedCollection.status === 'in_progress' || selectedCollection.status === 'completed' ? (
+                    <div className="flex items-start">
+                      <div className="bg-green-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-green-600 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Collector Assigned</p>
+                        <p className="text-sm text-gray-600">{selectedCollection.collector}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start opacity-50">
+                      <div className="bg-gray-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-gray-400 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Collector Assignment</p>
+                        <p className="text-sm text-gray-600">Pending</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedCollection.status === 'completed' ? (
+                    <div className="flex items-start">
+                      <div className="bg-green-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-green-600 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Collection Completed</p>
+                        <p className="text-sm text-gray-600">{pickupDate.toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start opacity-50">
+                      <div className="bg-gray-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-gray-400 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Collection Completion</p>
+                        <p className="text-sm text-gray-600">Pending</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedCollection.userConfirmed ? (
+                    <div className="flex items-start">
+                      <div className="bg-green-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-green-600 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Confirmed by You</p>
+                        <p className="text-sm text-gray-600">{confirmedAt?.toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start opacity-50">
+                      <div className="bg-gray-100 p-1 rounded-full mr-3 mt-1">
+                        <div className="bg-gray-400 w-2 h-2 rounded-full"></div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800">Your Confirmation</p>
+                        <p className="text-sm text-gray-600">Pending</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Collection ID */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 }}
+                className="bg-gray-50 rounded-xl border border-gray-200 p-4"
+              >
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Collection ID</h4>
+                <p className="text-xs text-gray-600 font-mono bg-white p-2 rounded border">{selectedCollection.id}</p>
+                <p className="text-xs text-gray-500 mt-2">Created: {createdAt.toLocaleDateString()}</p>
+              </motion.div>
+            </div>
+          </div>
+        </div>
+
+        {/* Confirmation Modal */}
+        {showConfirmationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-green-50 to-green-100">
+                <div className="flex items-center">
+                  <ShieldCheck className="w-5 h-5 text-green-600 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-800">Confirm Collection</h3>
+                </div>
+                <button 
+                  onClick={() => setShowConfirmationModal(false)}
+                  className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100"
+                  disabled={submitting}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-gray-800">Collection Completed</h4>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Please confirm that your collection was completed successfully and provide your feedback.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rate your experience
+                    </label>
+                    <div className="flex justify-center space-x-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          onClick={() => setRating(star)}
+                          disabled={submitting}
+                          className={`text-3xl ${star <= rating ? 'text-yellow-400' : 'text-gray-300'} hover:text-yellow-400 transition-colors disabled:opacity-50`}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-center text-sm text-gray-500 mt-1">
+                      {rating === 5 ? 'Excellent' : 
+                       rating === 4 ? 'Good' : 
+                       rating === 3 ? 'Average' : 
+                       rating === 2 ? 'Poor' : 'Very Poor'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Your feedback (optional)
+                    </label>
+                    <textarea
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value)}
+                      placeholder="How was your collection experience? Any comments for the collector?"
+                      disabled={submitting}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none disabled:opacity-50"
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowConfirmationModal(false)}
+                  disabled={submitting}
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-white font-medium transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleDetailConfirm}
+                  disabled={submitting}
+                  className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Confirming...
+                    </>
+                  ) : (
+                    <>
+                      <ThumbsUp className="w-4 h-4" />
+                      Confirm Collection
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // List View
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-25 to-green-50" style={{ background: 'linear-gradient(135deg, #fafff9 0%, #f0fdf4 100%)' }}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-green-50">
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
         {/* Header */}
@@ -674,7 +1461,7 @@ export default function WasteTracking() {
                 upcomingPickups.map((pickup, index) => {
                   const statusInfo = getStatusInfo(pickup.status)
                   return (
-                    <div key={index} className="bg-green-50 rounded-lg p-3 border border-green-100">
+                    <div key={pickup.id} className="bg-green-50 rounded-lg p-3 border border-green-100">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-green-800">{pickup.date}</span>
                         <span className="text-xs text-green-600">{pickup.time}</span>
@@ -747,7 +1534,7 @@ export default function WasteTracking() {
                   const statusInfo = getStatusInfo(item.status)
                   let formattedDate = 'Date not available'
                   try {
-                    const itemDate = item.createdAt?.toDate?.() || new Date(item.pickupDate?.seconds * 1000)
+                    const itemDate = item.pickupDate?.toDate?.() || new Date(item.pickupDate) || new Date()
                     formattedDate = itemDate.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'short',
@@ -868,6 +1655,7 @@ export default function WasteTracking() {
                             
                             <motion.button
                               whileHover={{ x: 3 }}
+                              onClick={() => handleViewDetail(item)}
                               className="text-green-600 hover:text-green-800 font-medium text-xs flex items-center transition-colors"
                             >
                               View Details
@@ -913,7 +1701,7 @@ export default function WasteTracking() {
         </motion.div>
 
         {/* Bulk Confirmation Modal */}
-        {showConfirmationModal && (
+        {showConfirmationModal && activeView === 'list' && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
