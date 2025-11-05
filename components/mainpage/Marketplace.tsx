@@ -11,15 +11,13 @@ import {
   Recycle,
   Leaf,
   Shield,
-  ChevronRight,
   Sparkles,
   Tag,
   X,
   Plus,
   Minus,
   User,
-  Crown,
-  Zap
+  Crown
 } from 'lucide-react';
 import {
   collection,
@@ -32,14 +30,12 @@ import {
   arrayRemove,
   increment,
   query,
-  where,
-  orderBy,
-  onSnapshot
+  where
 } from 'firebase/firestore';
 import { db, auth } from '@/firebase/config'
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
-// Types
+// Types (tetap sama)
 type Product = {
   id: string;
   name: string;
@@ -101,13 +97,13 @@ const CATEGORIES = [
   { name: 'Kitchen', count: 0, icon: <Tag className="w-5 h-5" /> }
 ];
 
-// Points calculation dengan bonus untuk subscriber
+// Points calculation
 const calculatePointsFromTransaction = (amount: number, isSubscribed: boolean): number => {
   const basePoints = Math.floor(amount / 10000);
   return isSubscribed ? Math.floor(basePoints * 1.5) : basePoints;
 };
 
-// Product Card Component
+// Product Card Component (tetap sama)
 const ProductCard = ({ 
   product, 
   onAddToCart, 
@@ -229,6 +225,100 @@ const ProductCard = ({
         >
           {product.stock < 1 ? 'Out of Stock' : 'Add to Cart'}
         </button>
+      </div>
+    </div>
+  );
+};
+
+// Minimal Header Component
+const MinimalHeader = ({ 
+  searchQuery, 
+  setSearchQuery, 
+  cart, 
+  userSubscription,
+  onSellItem,
+  onProfile,
+  onCartOpen,
+  onUpgradeSubscription 
+}: {
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  cart: CartItem[];
+  userSubscription: UserSubscription | null;
+  onSellItem: () => void;
+  onProfile: () => void;
+  onCartOpen: () => void;
+  onUpgradeSubscription: () => void;
+}) => {
+  return (
+    <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo */}
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
+              <Recycle className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-xl font-bold text-gray-800">EcoMarket</span>
+          </div>
+
+          {/* Search Bar - Center */}
+          <div className="flex-1 max-w-2xl mx-8">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search for sustainable products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-gray-50"
+              />
+            </div>
+          </div>
+
+          {/* Right Actions - Minimal */}
+          <div className="flex items-center space-x-3">
+            {/* Sell Item Button */}
+            <button
+              onClick={onSellItem}
+              className="bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-teal-700 transition-colors text-sm"
+            >
+              Sell Item
+            </button>
+
+            {/* Cart Button */}
+            <button
+              onClick={onCartOpen}
+              className="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"
+            >
+              <ShoppingCart className="w-6 h-6" />
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-teal-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                  {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                </span>
+              )}
+            </button>
+
+            {/* Profile Button */}
+            <button
+              onClick={onProfile}
+              className="p-2 text-gray-600 hover:text-teal-600 transition-colors"
+            >
+              <User className="w-6 h-6" />
+            </button>
+
+            {/* Subscription Badge */}
+            {userSubscription?.isActive && (
+              <button
+                onClick={onUpgradeSubscription}
+                className="flex items-center space-x-1 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-3 py-1 rounded-full text-sm font-semibold"
+              >
+                <Crown className="w-4 h-4" />
+                <span>Premium</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -712,7 +802,6 @@ export default function Marketplace() {
             ) : (
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
                 <div className="flex items-center space-x-2 mb-2">
-                  <Zap className="w-5 h-5 text-amber-600" />
                   <span className="font-bold text-amber-800">Upgrade to Premium</span>
                 </div>
                 <p className="text-sm text-amber-700 mb-2">
@@ -1001,75 +1090,17 @@ export default function Marketplace() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
-                <Recycle className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-800">EcoMarket</span>
-            </div>
-
-            {/* Search Bar */}
-            <div className="flex-1 max-w-2xl mx-8">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search for sustainable products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Right Actions */}
-            <div className="flex items-center space-x-4">
-              {/* Sell Item Button */}
-              <button
-                onClick={handleSellItem}
-                className="bg-gradient-to-r from-orange-500 to-pink-500 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
-              >
-                Sell Item
-              </button>
-
-              {/* Profile Button */}
-              <button
-                onClick={handleProfile}
-                className="flex items-center space-x-2 p-2 text-gray-600 hover:text-teal-600 transition-colors"
-              >
-                <User className="w-6 h-6" />
-                <span className="font-medium">Profile</span>
-              </button>
-
-              {/* Cart Button */}
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"
-              >
-                <ShoppingCart className="w-6 h-6" />
-                {cart.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-teal-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                  </span>
-                )}
-              </button>
-
-              {/* Subscription Status Badge */}
-              {userSubscription?.isActive && (
-                <div className="flex items-center space-x-1 bg-gradient-to-r from-purple-500 to-teal-500 text-white px-3 py-1 rounded-full">
-                  <Crown className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Premium</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Minimal Header */}
+      <MinimalHeader
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        cart={cart}
+        userSubscription={userSubscription}
+        onSellItem={handleSellItem}
+        onProfile={handleProfile}
+        onCartOpen={() => setIsCartOpen(true)}
+        onUpgradeSubscription={handleUpgradeSubscription}
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1207,4 +1238,4 @@ export default function Marketplace() {
       )}
     </div>
   );
-} 
+}

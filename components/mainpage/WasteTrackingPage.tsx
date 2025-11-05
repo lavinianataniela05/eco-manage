@@ -32,7 +32,10 @@ import {
   Star,
   Mail,
   CreditCard,
-  Navigation
+  Navigation,
+  Map,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react'
 
 interface Collection {
@@ -76,6 +79,34 @@ const COLLECTOR_NAMES = [
   { name: "Hana Sari", phone: "+62 819-8765-4321" }
 ]
 
+// Simulated tracking data
+const TRACKING_DATA = {
+  on_the_way: {
+    status: 'on_the_way',
+    label: 'On the Way',
+    message: 'Collector is en route to your location',
+    icon: <Truck className="w-5 h-5 text-blue-600" />,
+    color: 'text-blue-600 bg-blue-50 border-blue-200',
+    progress: 60
+  },
+  nearby: {
+    status: 'nearby',
+    label: 'Nearby',
+    message: 'Collector is in your area',
+    icon: <MapPin className="w-5 h-5 text-green-600" />,
+    color: 'text-green-600 bg-green-50 border-green-200',
+    progress: 80
+  },
+  arrived: {
+    status: 'arrived',
+    label: 'Arrived',
+    message: 'Collector has arrived at your location',
+    icon: <CheckCircle className="w-5 h-5 text-green-600" />,
+    color: 'text-green-600 bg-green-50 border-green-200',
+    progress: 100
+  }
+}
+
 export default function WasteTracking() {
   const [user] = useAuthState(auth)
   const router = useRouter()
@@ -100,16 +131,29 @@ export default function WasteTracking() {
   const [selectMode, setSelectMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // New states for reschedule and tracking
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false)
+  const [showTrackingModal, setShowTrackingModal] = useState(false)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
+  const [rescheduleNotes, setRescheduleNotes] = useState('')
+  const [rescheduling, setRescheduling] = useState(false)
+  const [trackingStatus, setTrackingStatus] = useState<'on_the_way' | 'nearby' | 'arrived'>('on_the_way')
+  const [collectorLocation, setCollectorLocation] = useState({
+    lat: -6.2088,
+    lng: 106.8456,
+    address: 'Jalan Sudirman, Jakarta',
+    estimatedArrival: '15-20 minutes'
+  })
+
   // Function to get random collector
   const getRandomCollector = () => {
     const randomIndex = Math.floor(Math.random() * COLLECTOR_NAMES.length)
     return COLLECTOR_NAMES[randomIndex]
   }
 
-  // Simplified status calculation - hanya untuk demo
+  // Simplified status calculation
   const calculateCollectionStatus = (collection: Collection) => {
-    // Untuk demo, kita akan menggunakan status dari Firebase saja
-    // Tapi kita bisa menambahkan logic real-time di sini jika needed
     return collection.status;
   }
 
@@ -133,13 +177,11 @@ export default function WasteTracking() {
     let collector = collection.collector
     let collectorPhone = collection.collectorPhone
     
-    // Assign random collector jika belum ada (untuk demo)
     if (!collector && newStatus !== 'completed' && newStatus !== 'cancelled') {
       const randomCollector = getRandomCollector()
       collector = randomCollector.name
       collectorPhone = randomCollector.phone
       
-      // Auto update ke Firebase untuk collector assignment
       updateCollectionStatus(collection.id, { 
         collector: collector,
         collectorPhone: collectorPhone
@@ -207,7 +249,6 @@ export default function WasteTracking() {
           } as Collection)
         })
 
-        // Sort manually on client side - newest first
         collectionsData.sort((a, b) => {
           const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0)
           const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0)
@@ -225,7 +266,6 @@ export default function WasteTracking() {
 
     fetchCollections()
 
-    // Set up real-time listener
     const unsubscribe = onSnapshot(
       query(collection(db, 'collections'), where('userId', '==', user?.uid)),
       (snapshot) => {
@@ -337,7 +377,6 @@ export default function WasteTracking() {
         updatedAt: new Date()
       })
 
-      // Update local state
       setSelectedCollection(prev => prev ? {
         ...prev,
         userConfirmed: true,
@@ -346,7 +385,6 @@ export default function WasteTracking() {
         confirmedAt: new Date()
       } : null)
 
-      // Update collections list
       setCollections(prev => prev.map(item => 
         item.id === selectedCollection.id
           ? { ...item, userConfirmed: true, userRating: rating, userFeedback: feedback }
@@ -374,7 +412,6 @@ export default function WasteTracking() {
 
     setSubmitting(true)
     try {
-      // Update all selected collections
       const updatePromises = selectedCollections.map(collectionId =>
         updateDoc(doc(db, 'collections', collectionId), {
           userConfirmed: false,
@@ -387,7 +424,6 @@ export default function WasteTracking() {
 
       await Promise.all(updatePromises)
 
-      // Update local state
       setCollections(prev => prev.map(item => 
         selectedCollections.includes(item.id)
           ? { ...item, userConfirmed: true, userRating: rating, userFeedback: feedback }
@@ -410,7 +446,6 @@ export default function WasteTracking() {
   const handleViewDetail = (collection: Collection) => {
     setSelectedCollection(collection)
     setActiveView('detail')
-    // Update URL without page reload
     window.history.pushState({}, '', `/waste-tracking/${collection.id}`)
   }
 
@@ -418,8 +453,129 @@ export default function WasteTracking() {
   const handleBackToList = () => {
     setActiveView('list')
     setSelectedCollection(null)
-    // Update URL back to list
     window.history.pushState({}, '', '/waste-tracking')
+  }
+
+  // RESCHEDULE FUNCTIONS
+  const openRescheduleModal = () => {
+    if (!selectedCollection) return
+    
+    const currentDate = selectedCollection.pickupDate?.toDate?.() || new Date(selectedCollection.pickupDate)
+    const formattedDate = currentDate.toISOString().split('T')[0]
+    
+    setRescheduleDate(formattedDate)
+    setRescheduleTime(selectedCollection.pickupTime || '14:00')
+    setRescheduleNotes('')
+    setShowRescheduleModal(true)
+  }
+
+  const handleReschedule = async () => {
+    if (!selectedCollection || !rescheduleDate || !rescheduleTime || rescheduling) return
+
+    setRescheduling(true)
+    try {
+      const collectionRef = doc(db, 'collections', selectedCollection.id)
+      
+      const newDate = new Date(rescheduleDate)
+      const [hours, minutes] = rescheduleTime.split(':').map(Number)
+      newDate.setHours(hours, minutes, 0, 0)
+
+      await updateDoc(collectionRef, {
+        pickupDate: newDate,
+        pickupTime: rescheduleTime,
+        status: 'scheduled',
+        statusLabel: 'Scheduled',
+        notes: rescheduleNotes ? `Rescheduled: ${rescheduleNotes}` : 'Collection rescheduled',
+        updatedAt: new Date()
+      })
+
+      setSelectedCollection(prev => prev ? {
+        ...prev,
+        pickupDate: newDate,
+        pickupTime: rescheduleTime,
+        status: 'scheduled',
+        statusLabel: 'Scheduled',
+        notes: rescheduleNotes ? `Rescheduled: ${rescheduleNotes}` : 'Collection rescheduled'
+      } : null)
+
+      setCollections(prev => prev.map(item => 
+        item.id === selectedCollection.id
+          ? { 
+              ...item, 
+              pickupDate: newDate, 
+              pickupTime: rescheduleTime,
+              status: 'scheduled',
+              statusLabel: 'Scheduled'
+            }
+          : item
+      ))
+
+      setShowRescheduleModal(false)
+      setRescheduleDate('')
+      setRescheduleTime('')
+      setRescheduleNotes('')
+      setRescheduling(false)
+
+      alert('Collection rescheduled successfully!')
+      
+    } catch (error) {
+      console.error('Error rescheduling collection:', error)
+      alert('Failed to reschedule collection. Please try again.')
+      setRescheduling(false)
+    }
+  }
+
+  // TRACK LOCATION FUNCTIONS
+  const handleTrackLocation = () => {
+    if (!selectedCollection) return
+
+    // Simulate different tracking statuses
+    const statuses: Array<'on_the_way' | 'nearby' | 'arrived'> = ['on_the_way', 'nearby', 'arrived']
+    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)]
+    
+    setTrackingStatus(randomStatus)
+    
+    // Simulate collector location updates
+    const locations = [
+      { lat: -6.2088, lng: 106.8456, address: 'Jalan Sudirman, Jakarta', estimatedArrival: '15-20 minutes' },
+      { lat: -6.2100, lng: 106.8440, address: 'Near Bundaran HI', estimatedArrival: '10-15 minutes' },
+      { lat: -6.2115, lng: 106.8420, address: 'Approaching your location', estimatedArrival: '5-10 minutes' }
+    ]
+    const randomLocation = locations[Math.floor(Math.random() * locations.length)]
+    
+    setCollectorLocation(randomLocation)
+    setShowTrackingModal(true)
+  }
+
+  const openInMaps = () => {
+    if (!selectedCollection?.address) return
+    
+    const encodedAddress = encodeURIComponent(selectedCollection.address)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    
+    if (isMobile) {
+      // Open in mobile maps app
+      window.open(`https://maps.google.com/maps?q=${encodedAddress}`, '_blank')
+    } else {
+      // Open in web maps
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank')
+    }
+  }
+
+  const openCollectorInMaps = () => {
+    const { lat, lng } = collectorLocation
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    
+    if (isMobile) {
+      window.open(`https://maps.google.com/maps?q=${lat},${lng}`, '_blank')
+    } else {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank')
+    }
+  }
+
+  const simulateLocationUpdate = () => {
+    // Simulate location update
+    handleTrackLocation()
   }
 
   // Calculate stats from enhanced collections
@@ -464,7 +620,6 @@ export default function WasteTracking() {
           year: 'numeric'
         })
         
-        // Calculate time remaining
         const pickupTime = item.pickupTime || '14:00'
         const [hours, minutes] = pickupTime.split(':').map(Number)
         const pickupDateTime = new Date(itemDate)
@@ -685,8 +840,9 @@ export default function WasteTracking() {
     const createdAt = selectedCollection.createdAt?.toDate?.() || new Date(selectedCollection.createdAt) || new Date()
     const confirmedAt = selectedCollection.confirmedAt?.toDate?.() || (selectedCollection.confirmedAt ? new Date(selectedCollection.confirmedAt) : null)
 
-    // Check if collection can be confirmed
     const canConfirm = selectedCollection.status === 'completed' && !selectedCollection.userConfirmed
+    const canReschedule = selectedCollection.status === 'scheduled' || selectedCollection.status === 'in_progress'
+    const canTrack = selectedCollection.status === 'in_progress' && selectedCollection.collector
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-25 to-green-50">
@@ -712,7 +868,6 @@ export default function WasteTracking() {
                 </div>
               </div>
               
-              {/* Confirmation Button - FIXED CONDITION */}
               {canConfirm && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -797,12 +952,6 @@ export default function WasteTracking() {
                           </span>
                         )}
                       </div>
-                      {/* Debug info */}
-                      <div className="mt-2 text-xs text-gray-500">
-                        Can confirm: {canConfirm ? 'YES' : 'NO'} | 
-                        Status: {selectedCollection.status} | 
-                        UserConfirmed: {selectedCollection.userConfirmed ? 'YES' : 'NO'}
-                      </div>
                     </div>
                   </div>
 
@@ -862,7 +1011,8 @@ export default function WasteTracking() {
                   )}
 
                   {/* Collection Details */}
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="bg-green-50 rounded-lg p-4">
+          
                     <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
                       <Package className="w-5 h-5 mr-2 text-green-600" />
                       Collection Details
@@ -1013,6 +1163,30 @@ export default function WasteTracking() {
                     </motion.button>
                   )}
                   
+                  {canTrack && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleTrackLocation}
+                      className="w-full border border-blue-600 text-blue-600 py-3 rounded-lg hover:bg-blue-50 flex items-center justify-center transition-colors"
+                    >
+                      <Navigation className="w-5 h-5 mr-2" />
+                      Track Location
+                    </motion.button>
+                  )}
+                  
+                  {canReschedule && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={openRescheduleModal}
+                      className="w-full border border-amber-600 text-amber-600 py-3 rounded-lg hover:bg-amber-50 flex items-center justify-center transition-colors"
+                    >
+                      <Calendar className="w-5 h-5 mr-2" />
+                      Reschedule
+                    </motion.button>
+                  )}
+                  
                   {selectedCollection.collectorPhone && (
                     <a 
                       href={`https://wa.me/${selectedCollection.collectorPhone.replace(/\D/g, '')}`}
@@ -1024,16 +1198,16 @@ export default function WasteTracking() {
                       Contact Collector
                     </a>
                   )}
-                  
-                  <button className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors">
-                    <Calendar className="w-5 h-5 mr-2" />
-                    Reschedule
-                  </button>
 
-                  <button className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors">
-                    <Navigation className="w-5 h-5 mr-2" />
-                    Track Location
-                  </button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={openInMaps}
+                    className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors"
+                  >
+                    <Map className="w-5 h-5 mr-2" />
+                    View Address in Maps
+                  </motion.button>
                 </div>
               </motion.div>
 
@@ -1246,11 +1420,253 @@ export default function WasteTracking() {
             </motion.div>
           </div>
         )}
+
+        {/* Reschedule Modal */}
+        {showRescheduleModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-amber-50 to-amber-100">
+                <div className="flex items-center">
+                  <Calendar className="w-5 h-5 text-amber-600 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-800">Reschedule Collection</h3>
+                </div>
+                <button 
+                  onClick={() => setShowRescheduleModal(false)}
+                  className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100"
+                  disabled={rescheduling}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <RefreshCw className="w-8 h-8 text-amber-600" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-gray-800">Change Pickup Schedule</h4>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Select a new date and time for your collection pickup.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      New Pickup Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      disabled={rescheduling}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      New Pickup Time *
+                    </label>
+                    <select
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                      disabled={rescheduling}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent disabled:opacity-50"
+                    >
+                      <option value="08:00">08:00 AM</option>
+                      <option value="09:00">09:00 AM</option>
+                      <option value="10:00">10:00 AM</option>
+                      <option value="11:00">11:00 AM</option>
+                      <option value="12:00">12:00 PM</option>
+                      <option value="13:00">01:00 PM</option>
+                      <option value="14:00">02:00 PM</option>
+                      <option value="15:00">03:00 PM</option>
+                      <option value="16:00">04:00 PM</option>
+                      <option value="17:00">05:00 PM</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reason for Rescheduling (Optional)
+                    </label>
+                    <textarea
+                      value={rescheduleNotes}
+                      onChange={(e) => setRescheduleNotes(e.target.value)}
+                      placeholder="Let us know why you need to reschedule..."
+                      disabled={rescheduling}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none disabled:opacity-50"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowRescheduleModal(false)}
+                  disabled={rescheduling}
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-white font-medium transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleReschedule}
+                  disabled={!rescheduleDate || !rescheduleTime || rescheduling}
+                  className="px-5 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium transition-all shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {rescheduling ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Rescheduling...
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="w-4 h-4" />
+                      Reschedule
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Track Location Modal */}
+        {showTrackingModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-blue-50 to-blue-100">
+                <div className="flex items-center">
+                  <Navigation className="w-5 h-5 text-blue-600 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-800">Track Collector</h3>
+                </div>
+                <button 
+                  onClick={() => setShowTrackingModal(false)}
+                  className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                <div className="text-center">
+                  <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    {TRACKING_DATA[trackingStatus].icon}
+                  </div>
+                  <h4 className="text-xl font-bold text-gray-800 mb-2">
+                    {selectedCollection?.collector || 'EcoManage Collector'}
+                  </h4>
+                  <div className={`px-4 py-2 inline-flex items-center text-sm font-medium rounded-full border ${TRACKING_DATA[trackingStatus].color} mb-2`}>
+                    {TRACKING_DATA[trackingStatus].icon}
+                    <span className="ml-2">{TRACKING_DATA[trackingStatus].label}</span>
+                  </div>
+                  <p className="text-gray-600 text-sm">
+                    {TRACKING_DATA[trackingStatus].message}
+                  </p>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Scheduled</span>
+                    <span>Completed</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-in-out"
+                      style={{ width: `${TRACKING_DATA[trackingStatus].progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Location Details */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Estimated Arrival</span>
+                    <span className="text-sm text-blue-600 font-semibold">{collectorLocation.estimatedArrival}</span>
+                  </div>
+                  <div className="flex items-start justify-between">
+                    <span className="text-sm font-medium text-gray-700">Current Location</span>
+                    <span className="text-sm text-gray-600 text-right">{collectorLocation.address}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Last Updated</span>
+                    <span className="text-sm text-gray-500">{new Date().toLocaleTimeString('en-US', { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}</span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={openCollectorInMaps}
+                    className="bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 flex items-center justify-center transition-colors text-sm font-medium"
+                  >
+                    <Map className="w-4 h-4 mr-2" />
+                    Open in Maps
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={simulateLocationUpdate}
+                    className="border border-gray-300 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 flex items-center justify-center transition-colors text-sm font-medium"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh
+                  </motion.button>
+                </div>
+
+                {/* Contact Info */}
+                {selectedCollection?.collectorPhone && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-green-800">Need assistance?</p>
+                        <p className="text-xs text-green-600">Contact your collector directly</p>
+                      </div>
+                      <a 
+                        href={`https://wa.me/${selectedCollection.collectorPhone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors flex items-center"
+                      >
+                        <MessageCircle className="w-3 h-3 mr-1" />
+                        WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     )
   }
 
-  // List View
+  // List View (tetap sama seperti sebelumnya)
+  // ... [kode untuk list view tetap sama seperti yang Anda berikan sebelumnya]
+  // Karena keterbatasan panjang, saya asumsikan list view code tetap sama
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-teal-50">
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
@@ -1288,17 +1704,14 @@ export default function WasteTracking() {
                 )}
               </motion.button>
 
-              {/* Main Confirm Button - Always Visible */}
               {completableCollections.length > 0 && (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     if (completableCollections.length === 1) {
-                      // If only one collection needs confirmation, confirm it directly
                       handleQuickConfirm(completableCollections[0].id)
                     } else {
-                      // If multiple, enter selection mode
                       setSelectMode(true)
                     }
                   }}
@@ -1309,7 +1722,6 @@ export default function WasteTracking() {
                 </motion.button>
               )}
 
-              {/* Selection Mode Controls */}
               {selectMode && (
                 <div className="flex gap-2">
                   <motion.button
@@ -1380,7 +1792,7 @@ export default function WasteTracking() {
           </motion.div>
         )}
 
-        {/* Quick Confirm Banner - For single unconfirmed collection */}
+        {/* Quick Confirm Banner */}
         {completableCollections.length === 1 && !selectMode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -1561,7 +1973,6 @@ export default function WasteTracking() {
                     >
                       <div className="flex flex-col">
                         <div className="flex items-start gap-4 mb-4">
-                          {/* Selection Checkbox */}
                           {selectMode && isSelectable && (
                             <button
                               onClick={() => toggleSelectCollection(item.id)}
