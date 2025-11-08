@@ -1,6 +1,7 @@
 'use client'
 import { usePathname } from 'next/navigation'
 import Sidebar from '@/components/mainpage/Sidebar'
+import Chatbot from '@/components/Chatbot' // Perbaiki path ini
 import './globals.css'
 
 export default function RootLayout({
@@ -29,6 +30,9 @@ export default function RootLayout({
               {children}
             </div>
           </main>
+
+          {/* Tambahkan Chatbot di sini */}
+          <Chatbot />
         </div>
       </body>
     </html>
